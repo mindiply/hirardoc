@@ -1,4 +1,4 @@
-import {Id, INormalizedDocument, IParentedId} from '../src/HTypes';
+import {Id, IDocumentSchema, INormalizedDocument, IParentedId} from '../src/HTypes'
 
 export interface IRoot extends IParentedId<'Root', null> {
   name: string;
@@ -20,3 +20,19 @@ export type TestNormalizeDocument = INormalizedDocument<
   ITestDocElementsMap,
   keyof ITestDocElementsMap
 >;
+
+export const testDocSchema: IDocumentSchema<ITestDocElementsMap> = {
+  documentType: 'TestDocSchema',
+  rootType: 'Root',
+  types: {
+    'Root': {
+      children: [{__schemaType: 'Node', notNull: true}]
+    },
+    'Node': {
+      children: [{
+        __schemaType: 'Node',
+        notNull: true
+      }]
+    }
+  }
+}

@@ -16,7 +16,6 @@ import {
   MappedParentedTypesFields
 } from './HTypes';
 import {
-  hasElement,
   hasMappedElement,
   isParentedId,
   mappedElement,
@@ -327,8 +326,8 @@ export function diffInfoOf<
   elementId: Id
 ): Partial<T> {
   if (
-    !hasElement(baseDoc.maps, elementType, elementId) ||
-    !hasElement(laterDoc.maps, elementType, elementId)
+    !hasMappedElement(baseDoc.maps, elementType, elementId) ||
+    !hasMappedElement(laterDoc.maps, elementType, elementId)
   ) {
     return {};
   }

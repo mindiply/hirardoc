@@ -1,5 +1,5 @@
-import {v1 as uuid} from 'uuid';
-import {diff3Merge, IMergeConflictRegion, IMergeOkRegion} from 'node-diff3';
+import {v1 as uuid} from 'uuid'
+import {diff3Merge, IMergeConflictRegion, IMergeOkRegion} from 'node-diff3'
 import {
   cloneNormalizedDocument,
   hasMappedElement,
@@ -8,7 +8,7 @@ import {
   mappedElement,
   mutableDocument,
   pathForElementWithId
-} from './HDocument';
+} from './HDocument'
 import {
   AllMappedTypesFields,
   ConflictsMap,
@@ -22,19 +22,23 @@ import {
   IElementConflicts,
   IFieldEntityReference,
   II3MergeResult,
+  II3WMergeContext,
   IInsertElement,
+  IMergeElementOverrides,
+  IMergeElementsState,
   IMoveElement,
   IMutableDocument,
   INormalizedDocument,
   INormalizedMutableMapsDocument,
   IParentedId,
   IValueConflict,
+  MergeOverrides,
   MergeStatus,
   Path,
   SubEntityPathElement
-} from './HTypes';
-import {visitDocument} from './HVisit';
-import {diff, diffElementInfo, diffInfoOf} from './HDiff';
+} from './HTypes'
+import {visitDocument} from './HVisit'
+import {diff, diffElementInfo, diffInfoOf} from './HDiff'
 
 type DataValue = string | Date | number | boolean;
 
@@ -181,171 +185,6 @@ function mergeElementInfo<
     ? {...mergeResult, conflicts}
     : mergeResult;
 }
-
-/**
- * Data used during merge for each element in mine
- * and their branches.
- */
-export interface IMergeElementsState {
-  hasPositionBeenProcessed: boolean;
-  haveInfoAndChildrenBeenProcessed: boolean;
-  isInBaseTree: boolean;
-  isInEditedPath: boolean;
-  mergedElementId: Id;
-}
-
-/**
- * The merge context is used during a three way merge to track progress
- * and allow higher-level data structures to change how the merge works
- * for specific types of elements.
- *
- * The overridable functions during the merge always receive this object
- * as part of their list of parameters
- */
-interface II3WMergeContext<MapsInterface, U extends keyof MapsInterface> {
-  myElementsMergeState: Map<string, IMergeElementsState>;
-  theirElementsMergeState: Map<string, IMergeElementsState>;
-  myDoc: INormalizedDocument<MapsInterface, U>;
-  theirDoc: INormalizedDocument<MapsInterface, U>;
-  elementsToDelete: Array<{__typename: U; _id: Id}>;
-  mergedDoc: IMutableDocument<MapsInterface, U>;
-  conflicts: ConflictsMap<MapsInterface, U>;
-  overrides?: MergeOverrides<MapsInterface, U, any>;
-}
-
-/**
- * Customisation hooks for an element type. This way each element type
- * can deviate from the default handling of merges.
- */
-export interface IMergeElementOverrides<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  ElementType extends IParentedId
-> {
-  /**
-   * Comparison used to determine the processing order of an array linked field. The elements
-   * compared will be from the two later branches of a three-way merge to determine which
-   * id will potentially be added first in the linked array of the merged tree.
-   *
-   * @param {ElementType | null} a
-   * @param {ElementType | null} b
-   * @param {II3WMergeContext<MapsInterface, U>} mergeContext
-   * @returns {number}
-   */
-  cmpSiblings: (
-    base: ElementType | null,
-    a: ElementType | null,
-    b: ElementType | null,
-    mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => number;
-
-  /**
-   * Allows customising which fields are considered when merging element information.
-   * If some fields for instance determine and are merged when determining the position
-   * of elements in parents, this mergeInfo can decide not to look at those fields.
-   *
-   * @param {ElementType} base
-   * @param {ElementType} a
-   * @param {ElementType} b
-   * @returns {ElementInfoConflicts<ElementType>}
-   */
-  mergeElementInfo: (
-    base: ElementType,
-    a: ElementType | null,
-    b: ElementType | null,
-    mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => void;
-
-  /**
-   * Allows customising how an element is removed from the merging tree
-   */
-  onDeleteElement: (
-    elementId: Id,
-    mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => void;
-
-  /**
-   * Called when an element is present in all the versions
-   * of the document being merged, but has been moved to different places
-   * within the document's hierarchy. If true is returned, instead of the
-   * node in a different position being cloned, we consider this position to be
-   * fine for the other version of the document as well and only one copy of the
-   * element will be kept (and merged).
-   *
-   * This allows documents to say that even if the positions are different, in
-   * their domain the positions are equivalent so keeping the first you meet is
-   * fine.
-   *
-   * @param {Id} elementId
-   * @param {II3WMergeContext<MapsInterface, U>} mergeContext
-   * @returns {boolean}
-   */
-  arePositionsCompatible: (
-    elementId: Id,
-    mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => boolean;
-
-  /**
-   * Called when an element is moved to a different position in the merged document.
-   * Allows documents to use their domain aware move functions.
-   */
-  moveToMergePosition: (
-    elementId: Id,
-    toParentPath: Path<MapsInterface>,
-    toPosition: SubEntityPathElement<MapsInterface>,
-    mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => void;
-
-  /**
-   * Called when an element is added to the document, allowing domain specific
-   * functions to override the generic HDocument insert command.
-   *
-   * @param {ElementType} element
-   * @param {Path<MapsInterface>} parentPath
-   * @param {SubEntityPathElement<MapsInterface>} position
-   * @returns {ElementType}
-   */
-  addElement: (
-    element: ElementType,
-    parentPath: Path<MapsInterface>,
-    position: SubEntityPathElement<MapsInterface>,
-    mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => ElementType;
-
-  /**
-   * Called when an element is present in all versions of the document,
-   * has been moved to different positions within the document hierarchy,
-   * and the two new positions are not compatible.
-   *
-   * Allows documents to customise how this conflict is resolved instead of
-   * relying on the standard resolution method - creating a clone of the subtree
-   * rooted at the element by reiding the subtree in the version of the tree where
-   * the element occurs later in the visit.
-   *
-   * @param {Id} elementId
-   * @param {Path<MapsInterface>} parentPath
-   * @param {SubEntityPathElement<MapsInterface>} position
-   * @param {"left" | "right"} versionMoved
-   * @param {II3WMergeContext<MapsInterface, U>} mergeContext
-   * @returns {boolean} return true if you added a node at the current position
-   *          in the merged array
-   */
-  onIncompatibleElementVersions: (
-    elementId: Id,
-    parentPath: Path<MapsInterface>,
-    position: SubEntityPathElement<MapsInterface>,
-    versionMoved: 'left' | 'right',
-    mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => boolean;
-}
-
-export type MergeOverrides<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  ElementType extends IParentedId<U, U>
-> = {
-  [F in U]?: Partial<IMergeElementOverrides<MapsInterface, U, ElementType>>;
-};
 
 /**
  * Given a base version of a normalized document, and

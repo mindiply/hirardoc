@@ -1,38 +1,4 @@
-/**
- * A lazy mutable delta represents the differences between the map the
- * lazy mutable map was initialized with and the change operations that have
- * subsequently been performed on it.
- */
-export interface ILazyMutableMapDelta<K, V> {
-  added: Map<K, V>;
-  changed: Map<K, V>;
-  deleted: Set<K>;
-}
-
-/**
- * Wraps a Javascript map, creating lazily a new shallow copy if
- * we perform changes on it.
- *
- * It allows using the object as a mutable map and return a new copy
- * only if any changes happened withing some potentially mutating code.
- *
- * The typical use is withing non-trivial reducers, where changes may
- * happen after a number of different conditions, and where we don't want
- * to create a new map if we don't need to nor keep checking if we need a new
- * version of the original map.
- */
-export interface ILazyMutableMap<K, V> {
-  hasChanged: () => boolean;
-  has: (key: K) => boolean;
-  set: (key: K, value: V) => ILazyMutableMap<K, V>;
-  get: (key: K) => undefined | V;
-  getOriginal: (key: K) => undefined | V;
-  delete: (key: K) => boolean;
-  keys: () => IterableIterator<K>;
-  values: () => IterableIterator<V>;
-  getMap: () => Map<K, V>;
-  delta: () => ILazyMutableMapDelta<K, V>;
-}
+import {ILazyMutableMap, ILazyMutableMapDelta} from './HTypes'
 
 export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
   protected readonly originalValuesMap: Map<K, V>;

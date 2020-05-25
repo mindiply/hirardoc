@@ -1,11 +1,31 @@
-import {TestNormalizeDocument} from './testTypes'
+import {testDocSchema, TestNormalizeDocument} from './testTypes';
 
-const emptyTestDocyment = (): TestNormalizeDocument => ({
+const emptyTestDocument = (): TestNormalizeDocument => ({
   maps: {
-    Node: new Map([1, {
-      _id: 1,
-
-    }]),
-
-  }
+    Root: new Map([
+      [
+        1,
+        {
+          __typename: 'Root',
+          _id: 1,
+          createdAt: new Date(),
+          name: 'root',
+          children: [],
+          parentType: null,
+          parentId: null
+        }
+      ]
+    ]),
+    Node: new Map()
+  },
+  rootType: 'Node',
+  rootId: 1,
+  schema: testDocSchema
 });
+
+describe('Test the basic operations', () => {
+  test('The empty document', () => {
+    const emptyDoc = emptyTestDocument();
+
+  });
+})

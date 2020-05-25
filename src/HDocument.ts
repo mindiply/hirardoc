@@ -1,6 +1,6 @@
 import {isEqual} from 'lodash';
 import {v1 as uuid} from 'uuid';
-import {ILazyMutableMap, LazyMutableMap} from './LazyMap';
+import {LazyMutableMap} from './LazyMap';
 import {
   AllMappedTypes,
   AllMappedTypesFields,
@@ -12,7 +12,7 @@ import {
   Id,
   IDocumentSchema,
   IFieldEntityReference,
-  IInsertElement,
+  IInsertElement, ILazyMutableMap,
   IMoveElement,
   IMutableDocument,
   INormalizedDocument,
@@ -21,7 +21,7 @@ import {
   MutableEntitiesMaps,
   Path,
   SubEntityPathElement
-} from './HTypes';
+} from './HTypes'
 
 export function isId(obj: any): obj is Id {
   return (obj !== '' && typeof obj === 'number') || typeof obj === 'string';
@@ -1036,32 +1036,6 @@ export function isParentedMutableMap(
     return true;
   }
   return false;
-}
-
-/**
- * Checks if the element of type elementType and id elementId is in the
- * document's database of elements.
- *
- * @param {EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>} maps
- * @param {U} elementType
- * @param {Id} elementId
- * @returns {boolean}
- */
-export function hasElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
->(
-  maps: EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>,
-  elementType: U,
-  elementId: Id
-): boolean {
-  if (!(elementType in maps)) {
-    return false;
-  }
-  const typeMap: ILazyMutableMap<Id, any> | Map<Id, any> = maps[elementType];
-  return typeMap.has(elementId);
 }
 
 /**
