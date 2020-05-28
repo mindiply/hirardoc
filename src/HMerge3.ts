@@ -1,12 +1,14 @@
 import {v1 as uuid} from 'uuid'
-import {diff3Merge, IMergeConflictRegion, IMergeOkRegion} from 'node-diff3'
+import {diff3Merge, IMergeConflictRegion, IMergeOkRegion, MergeRegion} from 'node-diff3'
 import {
   cloneNormalizedDocument,
   hasMappedElement,
   idAndTypeForPath,
+  isId, isNullableId,
   isParentedId,
   mappedElement,
   mutableDocument,
+  parentToChildFieldName,
   pathForElementWithId
 } from './HDocument'
 import {
@@ -21,6 +23,7 @@ import {
   IDocumentSchema,
   IElementConflicts,
   IFieldEntityReference,
+  IGetterSetter,
   II3MergeResult,
   II3WMergeContext,
   IInsertElement,
@@ -31,10 +34,12 @@ import {
   INormalizedDocument,
   INormalizedMutableMapsDocument,
   IParentedId,
+  IProcessingOrderElement,
   IValueConflict,
   MergeOverrides,
   MergeStatus,
   Path,
+  ProcessingOrderFrom,
   SubEntityPathElement
 } from './HTypes'
 import {visitDocument} from './HVisit'
@@ -85,6 +90,12 @@ function mergeDataValues<T extends DataValue>(
   }
   let mergedValue: T;
   if (
+    typeof baseValue === 'boolean' &&
+    typeof theirValue === 'boolean' &&
+    typeof myValue === 'boolean'
+  ) {
+    mergedValue = myValue;
+  } else if (
     typeof baseValue === 'number' &&
     typeof theirValue === 'number' &&
     typeof myValue === 'number'
@@ -213,21 +224,23 @@ export function threeWayMerge<
     mergedDoc,
     myElementsMergeState: buildMergeElementsState(baseDoc, myDoc),
     theirElementsMergeState: buildMergeElementsState(baseDoc, theirDoc),
-    myDoc: myDoc,
-    theirDoc: theirDoc,
+    baseDoc,
+    myDoc: createGetterSetter(myDoc),
+    theirDoc: createGetterSetter(theirDoc),
     elementsToDelete: [],
     conflicts: {} as ConflictsMap<MapsInterface, U>,
     overrides: options
   };
   for (const elementType in baseDoc.maps) {
-    mergeContext.conflicts[elementType] = new Map();
+    // ToDo resolve this type error
+    // @ts-expect-error
+    mergeContext.conflicts[elementType as U] = new Map();
   }
   buildMergedTree(mergeContext);
   const updatedDoc = mergedDoc.updatedDocument();
   return {
     mergedDoc: updatedDoc,
-    conflicts: mergeContext.conflicts,
-    delta: diff(baseDoc, updatedDoc)
+    conflicts: mergeContext.conflicts
   };
 }
 
@@ -243,6 +256,16 @@ const elementTypesOverridesMap: Map<
   IMergeElementOverrides<any, any, any>
 > = new Map();
 
+function createGetterSetter<T>(value: T): IGetterSetter<T> {
+  let val = value;
+  return (newValue?) => {
+    if (newValue !== undefined) {
+      val = newValue;
+    }
+    return val;
+  };
+}
+
 /**
  * Creates new IDs for all the elements in the document subTree
  * starting at the given element identified by its type and id.
@@ -257,23 +280,40 @@ const elementTypesOverridesMap: Map<
  * @returns {IMutableDocument<MapsInterface, U>}
  */
 function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
-  document: INormalizedDocument<MapsInterface, U>,
+  context: II3WMergeContext<MapsInterface, U>,
+  treeToRebase: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
   elementType: U,
   elementId: Id
 ): {doc: INormalizedDocument<MapsInterface, U>; newElementId: Id} {
-  const newIds: Map<U, Map<Id, Id>> = new Map();
+  const document =
+    treeToRebase === ProcessingOrderFrom.left
+      ? context.myDoc()
+      : context.theirDoc();
+  const newIds: Map<string, Id> = new Map();
+  const elUid = getElementUid(elementType, elementId);
   const changedDocument = cloneNormalizedDocument(document);
 
   // First I generate Ids for all the elements in the subtree
   visitDocument(
     document,
-    (doc, elementType, elementId) => {
-      if (!newIds.has(elementType)) {
-        newIds.set(elementType, new Map());
-      }
-      const idsMap = newIds.get(elementType)!;
-      if (!idsMap.has(elementId)) {
-        idsMap.set(elementId, uuid());
+    (doc, nodeType, nodeId) => {
+      const nodeUid = getElementUid(nodeType, nodeId);
+      const newId = uuid();
+      if (!newIds.has(nodeUid)) {
+        newIds.set(nodeUid, newId);
+        if (treeToRebase === ProcessingOrderFrom.left) {
+          context.myElementsMergeState.set(
+            getElementUid(nodeType, newId),
+            context.myElementsMergeState.get(getElementUid(nodeType, nodeId))!
+          );
+        } else {
+          context.theirElementsMergeState.set(
+            getElementUid(nodeType, newId),
+            context.theirElementsMergeState.get(
+              getElementUid(nodeType, nodeId)
+            )!
+          );
+        }
       }
     },
     {},
@@ -281,6 +321,45 @@ function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
     elementType,
     elementId
   );
+
+  const rebasingRootElement = mappedElement(
+    changedDocument.maps,
+    elementType,
+    elementId
+  ) as IParentedId;
+  const rebasedRootId = newIds.get(elUid)!;
+  if (rebasingRootElement.parentId && rebasingRootElement.parentType) {
+    const parent = mappedElement(
+      changedDocument.maps,
+      rebasingRootElement.parentType,
+      rebasingRootElement.parentId
+    ) as IParentedId;
+    const parentToChildField = parentToChildFieldName(
+      changedDocument,
+      rebasingRootElement.parentType,
+      elementType
+    );
+    const newParent = {
+      ...parent,
+      [parentToChildField]: ((parent as any)[
+        parentToChildField
+      ] as Id[]).slice()
+    };
+    const oldIndex = ((newParent as any)[parentToChildField] as Id[]).indexOf(
+      elementId
+    );
+    if (oldIndex !== -1) {
+      ((newParent as any)[parentToChildField] as Id[])[
+        oldIndex
+      ] = rebasedRootId;
+    }
+    (changedDocument.maps[rebasingRootElement.parentType as U] as Map<
+      Id,
+      IParentedId
+    >).set(rebasingRootElement.parentId, newParent);
+  } else {
+    changedDocument.rootId = rebasedRootId;
+  }
 
   // Second I go depth first down the elements and change the ids
   // of each one of them
@@ -292,16 +371,16 @@ function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
         elementType,
         elementId
       ) as IParentedId;
+      const reIdUid = getElementUid(elementType, elementId);
       const reIdedElement = {
         ...element,
-        _id: newIds.get(elementType)!.get(elementId)!
+        _id: newIds.get(reIdUid)!
       };
       const nodeSchema = doc.schema.types[elementType];
       const reIdedParentId: null | Id =
         element.parentId !== null &&
-        newIds.has(element.parentType) &&
-        newIds.get(element.parentType)!.has(element.parentId)
-          ? newIds.get(element.parentType)!.get(element.parentId)!
+        newIds.has(getElementUid(element.parentType, element.parentId))
+          ? newIds.get(getElementUid(element.parentType, element.parentId))!
           : null;
       for (const linkField in nodeSchema) {
         if (linkField === 'parentId' && reIdedParentId !== null) {
@@ -314,13 +393,13 @@ function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
           (reIdedElement as any)[linkField] = ((reIdedElement as any)[
             linkField
           ] as Id[]).map(
-            existingId => newIds.get(__schemaType)!.get(existingId)!
+            existingId => newIds.get(getElementUid(__schemaType, existingId))!
           );
         } else {
           const {__schemaType} = linkFieldProps as IFieldEntityReference<U>;
-          (reIdedElement as any)[linkField] = newIds
-            .get(__schemaType)!
-            .get((reIdedElement as any)[linkField] as Id)!;
+          (reIdedElement as any)[linkField] = newIds.get(
+            getElementUid(__schemaType, (reIdedElement as any)[linkField] as Id)
+          )!;
         }
       }
       doc.maps[elementType].set(reIdedElement._id, reIdedElement);
@@ -332,9 +411,14 @@ function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
     elementId
   );
 
+  if (treeToRebase === ProcessingOrderFrom.left) {
+    context.myDoc(changedDocument);
+  } else {
+    context.theirDoc(changedDocument);
+  }
   return {
     doc: changedDocument,
-    newElementId: newIds.get(elementType)!.get(elementId)!
+    newElementId: newIds.get(elUid)!
   };
 }
 
@@ -352,7 +436,7 @@ function fnsForElementType<
   context: II3WMergeContext<MapsInterface, U>,
   elementType: U
 ): IMergeElementOverrides<MapsInterface, U, ElementType> {
-  const typeUid = getElementTypeUid(context.myDoc, elementType);
+  const typeUid = getElementTypeUid(context.myDoc(), elementType);
   let overridableFunctions:
     | undefined
     | IMergeElementOverrides<
@@ -373,45 +457,30 @@ function fnsForElementType<
             elementId: Id,
             parentPath: Path<MapsInterface>,
             position: SubEntityPathElement<MapsInterface>,
-            versionMoved: 'left' | 'right',
-            {mergedDoc}: II3WMergeContext<MapsInterface, U>
-          ): boolean => {
-            let cloneId: Id;
-            if (versionMoved === 'left') {
-              const {doc: changedDoc, newElementId} = reIdElementSubtree(
-                context.theirDoc,
-                elementType,
-                elementId
-              );
-              cloneId = newElementId;
-              context.theirDoc = changedDoc;
-              context.myElementsMergeState.get(
-                getElementUid(elementType, elementId)
-              )!.hasPositionBeenProcessed = true;
-            } else {
-              const {doc: changedDoc, newElementId} = reIdElementSubtree(
-                context.myDoc,
-                elementType,
-                elementId
-              );
-              context.myDoc = changedDoc;
-              cloneId = newElementId;
-              context.theirElementsMergeState.get(
-                getElementUid(elementType, elementId)
-              )!.hasPositionBeenProcessed = true;
-            }
+            versionMoved: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
+            mergeCtx: II3WMergeContext<MapsInterface, U>
+          ) => {
+            const {newElementId} = reIdElementSubtree(
+              mergeCtx,
+              versionMoved === ProcessingOrderFrom.left
+                ? ProcessingOrderFrom.right
+                : ProcessingOrderFrom.left,
+              elementType,
+              elementId
+            );
+            const cloneId = newElementId;
             const elementConflicts =
-              context.conflicts[elementType].get(elementId) || {};
+              mergeCtx.conflicts[elementType].get(elementId) || {};
             elementConflicts.positionConflicts = {
               clonedElements: [cloneId],
               mergeStatus: MergeStatus.autoMerged
             };
-            context.conflicts[elementType].set(elementId, elementConflicts);
+            mergeCtx.conflicts[elementType].set(elementId, elementConflicts);
             let currentId: Id | null = null;
             let currentType: U | null = null;
             try {
               const {_id, __typename} = idAndTypeForPath(
-                mergedDoc,
+                mergeCtx.mergedDoc,
                 parentPath.concat(position)
               );
               currentId = _id;
@@ -428,7 +497,7 @@ function fnsForElementType<
               > = {
                 __typename: HDocCommandType.MOVE_ELEMENT,
                 fromPath: pathForElementWithId(
-                  mergedDoc,
+                  mergeCtx.mergedDoc,
                   elementType,
                   elementId
                 ),
@@ -442,9 +511,36 @@ function fnsForElementType<
                   _id: elementId
                 }
               };
-              mergedDoc.moveElement(moveElementCmd);
+              mergeCtx.mergedDoc.moveElement(moveElementCmd);
             }
-            return true;
+            if (versionMoved === ProcessingOrderFrom.left) {
+              mergeCtx.myElementsMergeState.set(
+                getElementUid(elementType, cloneId),
+                mergeCtx.myElementsMergeState.get(
+                  getElementUid(elementType, elementId)
+                )!
+              );
+            } else {
+              mergeCtx.theirElementsMergeState.set(
+                getElementUid(elementType, cloneId),
+                mergeCtx.theirElementsMergeState.get(
+                  getElementUid(elementType, elementId)
+                )!
+              );
+            }
+            return {
+              advancedMergingIndex: true,
+              rebasedIds: [
+                {
+                  rebasedSide:
+                    versionMoved === ProcessingOrderFrom.left
+                      ? ProcessingOrderFrom.right
+                      : ProcessingOrderFrom.left,
+                  _id: elementId,
+                  newId: cloneId
+                }
+              ]
+            };
           },
       moveToMergePosition: elementOverrides.moveToMergePosition
         ? elementOverrides.moveToMergePosition
@@ -473,13 +569,13 @@ function fnsForElementType<
       mergeElementInfo: elementOverrides.mergeElementInfo
         ? elementOverrides.mergeElementInfo
         : <ElementType extends IParentedId<U, U>>(
-            base: ElementType,
+            base: ElementType | null,
             a: ElementType | null,
             b: ElementType | null,
             mergeContext: II3WMergeContext<MapsInterface, U>
           ) => {
             let elementInfoDiff: Partial<ElementType> | null = null;
-            if (a && b) {
+            if (a && b && base) {
               const mergeRes = mergeElementInfo<MapsInterface, U, ElementType>(
                 mergeContext.mergedDoc.schema,
                 elementType,
@@ -503,7 +599,7 @@ function fnsForElementType<
                 base,
                 mergeRes.mergedElement
               );
-            } else if (a || b) {
+            } else if (base && (a || b)) {
               const laterEl = (a ? a : b) as ElementType;
               elementInfoDiff = diffElementInfo(
                 mergeContext.mergedDoc.schema,
@@ -572,16 +668,22 @@ function fnsForElementType<
       arePositionsCompatible: elementOverrides.arePositionsCompatible
         ? elementOverrides.arePositionsCompatible
         : (
-            elementId: Id,
-            mergeContext: II3WMergeContext<MapsInterface, U>
-          ): boolean => {
-            const infoDiff = diffInfoOf(
-              mergeContext.myDoc,
-              mergeContext.theirDoc,
-              elementType,
-              elementId
-            );
-            return Object.keys(infoDiff).length === 0;
+            elementId,
+            fromSide,
+            mergeContext
+          )=> {
+            const leftElement = hasMappedElement(mergeContext.myDoc().maps, elementType, elementId) ?
+              mappedElement(mergeContext.myDoc().maps, elementType, elementId) as IParentedId: null;
+            const rightElement = hasMappedElement(mergeContext.theirDoc().maps, elementType, elementId) ?
+              mappedElement(mergeContext.theirDoc().maps, elementType, elementId) as IParentedId : null;
+            if (!(leftElement && rightElement)) return true;
+            if (!isNullableId(leftElement.parentId) && !isNullableId(rightElement.parentId)) {
+              return true;
+            }
+            if (leftElement.parentId !== rightElement.parentId || leftElement.parentType !== rightElement.parentType) {
+              return false;
+            }
+            return fromSide === ProcessingOrderFrom.both;
           },
       addElement: elementOverrides.addElement
         ? elementOverrides.addElement
@@ -631,7 +733,7 @@ function fnsForElementType<
 function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
   mergeCtx: II3WMergeContext<MapsInterface, U>
 ): IMutableDocument<MapsInterface, U> {
-  const {myDoc: left, theirDoc: right, mergedDoc} = mergeCtx;
+  const {myDoc: left, theirDoc: right, mergedDoc, baseDoc} = mergeCtx;
   for (
     const nodeQueue: Array<[U, Id]> = [[mergedDoc.rootType, mergedDoc.rootId]],
       nodesInQueue: Set<string> = new Set([
@@ -642,16 +744,14 @@ function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
   ) {
     const [nodeType, nodeId] = nodeQueue.shift()!;
     const {mergeElementInfo} = fnsForElementType(mergeCtx, nodeType);
-    const baseEl = mappedElement(
-      mergedDoc.maps,
-      nodeType,
-      nodeId
-    ) as IParentedId<U, U>;
-    const leftEl = hasMappedElement(left.maps, nodeType, nodeId)
-      ? (mappedElement(left.maps, nodeType, nodeId) as IParentedId<U, U>)
+    const baseEl = hasMappedElement(baseDoc.maps, nodeType, nodeId)
+      ? (mappedElement(baseDoc.maps, nodeType, nodeId) as IParentedId<U, U>)
       : null;
-    const rightEl = hasMappedElement(right.maps, nodeType, nodeId)
-      ? (mappedElement(right.maps, nodeType, nodeId) as IParentedId<U, U>)
+    const leftEl = hasMappedElement(left().maps, nodeType, nodeId)
+      ? (mappedElement(left().maps, nodeType, nodeId) as IParentedId<U, U>)
+      : null;
+    const rightEl = hasMappedElement(right().maps, nodeType, nodeId)
+      ? (mappedElement(right().maps, nodeType, nodeId) as IParentedId<U, U>)
       : null;
     mergeElementInfo(baseEl, leftEl, rightEl, mergeCtx);
     const nodeSchema = mergedDoc.schema.types[nodeType];
@@ -686,7 +786,7 @@ function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
     (doc, nodeType, nodeId) => {
       const nodeUid = getElementUid(nodeType, nodeId);
       const existsLeft = hasMappedElement(
-        mergeCtx.myDoc.maps,
+        mergeCtx.myDoc().maps,
         nodeType,
         nodeId
       );
@@ -694,11 +794,11 @@ function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
         ? mergeCtx.myElementsMergeState.get(nodeUid)!.isInEditedPath
         : false;
       const existsRight = hasMappedElement(
-        mergeCtx.theirDoc.maps,
+        mergeCtx.theirDoc().maps,
         nodeType,
         nodeId
       );
-      const editedRight = existsLeft
+      const editedRight = existsRight
         ? mergeCtx.theirElementsMergeState.get(nodeUid)!.isInEditedPath
         : false;
       if ((!existsLeft || !existsRight) && !editedLeft && !editedRight) {
@@ -726,159 +826,258 @@ function isConflictMergeZone(obj: any): obj is IMergeConflictRegion<any> {
     Array.isArray(obj.conflict.a) &&
     Array.isArray(obj.conflict.b) &&
     Array.isArray(obj.conflict.o) &&
-    typeof obj.conflict.a === 'number' &&
-    typeof obj.conflict.b === 'number' &&
-    typeof obj.conflict.o === 'number'
+    typeof obj.conflict.aIndex === 'number' &&
+    typeof obj.conflict.bIndex === 'number' &&
+    typeof obj.conflict.oIndex === 'number'
   );
 }
 
-enum ProcessingOrderFrom {
-  both,
-  left,
-  right
-}
-
-interface IProcessingOrderElement {
-  _id: Id;
-  from: ProcessingOrderFrom;
-}
-
 /**
- * Creates a processing order for a linked array field of
- * a parent element during a three-way merge.
+ * Creates an iterator over a three-way merging array
+ * of children IDs.
  *
- * Each element of the processing order will be an ID and
- * the provenience of the id (left, right or both trees)
- *
- * @param {II3WMergeContext<MapsInterface, U>} mergeCtx
- * @param {U} parentType
- * @param {Id} parentId
- * @param {U} childType
- * @param {AllMappedTypesFields<MapsInterface>} linkedArrayField
- * @returns {IProcessingOrderElement[]}
+ * The iterator allows changing an id to a new one if this was
+ * needed during the merging and we want to ensure the new rebased
+ * value is used straight away.
  */
-function determineLinkedArrayProcessingOrder<
-  MapsInterface,
-  U extends keyof MapsInterface
->(
-  mergeCtx: II3WMergeContext<MapsInterface, U>,
-  parentType: U,
-  parentId: Id,
-  childType: U,
-  linkedArrayField: AllMappedTypesFields<MapsInterface>
-): IProcessingOrderElement[] {
-  const {cmpSiblings} = fnsForElementType(mergeCtx, parentType);
-  const baseArray: Id[] = mappedElement(
-    mergeCtx.mergedDoc.maps,
-    parentType,
-    parentId
-  )[linkedArrayField] as Id[];
-  const leftArray: Id[] = hasMappedElement(
-    mergeCtx.myDoc.maps,
-    parentType,
-    parentId
-  )
-    ? (mappedElement(mergeCtx.myDoc.maps, parentType, parentId)[
-        linkedArrayField
-      ] as Id[]).slice()
-    : [];
-  const rightArray: Id[] = hasMappedElement(
-    mergeCtx.theirDoc.maps,
-    parentType,
-    parentId
-  )
-    ? (mappedElement(mergeCtx.theirDoc.maps, parentType, parentId)[
-        linkedArrayField
-      ] as Id[]).slice()
-    : [];
-  const idsInProcessingOrder: IProcessingOrderElement[] = [];
-  const mergeZones = diff3Merge(baseArray, leftArray, rightArray);
-  for (const mergeZone of mergeZones) {
+class NextSiblingToProcessIterator<MapsInterface, U extends keyof MapsInterface>
+  implements IterableIterator<IProcessingOrderElement> {
+  private baseArray: Id[];
+  private _mergingArray: Id[];
+  private _leftArray: Id[];
+  private _rightArray: Id[];
+  private mergeZones: MergeRegion<Id>[];
+  private mergeCtx: II3WMergeContext<MapsInterface, U>;
+  private childType: U;
+  private parentType: U;
+
+  constructor(
+    mergeCtx: II3WMergeContext<MapsInterface, U>,
+    parentType: U,
+    parentId: Id,
+    childType: U,
+    linkedArrayField: AllMappedTypesFields<MapsInterface>
+  ) {
+    this.mergeCtx = mergeCtx;
+    this.childType = childType;
+    this.parentType = parentType;
+    this.baseArray = hasMappedElement(
+      mergeCtx.baseDoc.maps,
+      parentType,
+      parentId
+    )
+      ? (mappedElement(mergeCtx.baseDoc.maps, parentType, parentId)[
+          linkedArrayField
+        ] as Id[])
+      : [];
+    this._mergingArray = (mappedElement(
+      mergeCtx.mergedDoc.maps,
+      parentType,
+      parentId
+    )[linkedArrayField] as Id[]).slice();
+    this._leftArray = hasMappedElement(
+      mergeCtx.myDoc().maps,
+      parentType,
+      parentId
+    )
+      ? (mappedElement(mergeCtx.myDoc().maps, parentType, parentId)[
+          linkedArrayField
+        ] as Id[]).slice()
+      : [];
+    this._rightArray = hasMappedElement(
+      mergeCtx.theirDoc().maps,
+      parentType,
+      parentId
+    )
+      ? (mappedElement(mergeCtx.theirDoc().maps, parentType, parentId)[
+          linkedArrayField
+        ] as Id[]).slice()
+      : [];
+    this.mergeZones = diff3Merge(
+      this._leftArray,
+      this.baseArray,
+      this._rightArray
+    );
+  }
+
+  public next = (): IteratorResult<IProcessingOrderElement, undefined> => {
+    if (this.mergeZones.length === 0) {
+      return {
+        done: true,
+        value: undefined
+      };
+    }
+    const mergeZone = this.mergeZones[0];
     if (isOkMergeZone(mergeZone)) {
-      idsInProcessingOrder.push(
-        ...mergeZone.ok.map(id => ({_id: id, from: ProcessingOrderFrom.both}))
-      );
+      const nextValue: IProcessingOrderElement = {
+        _id: mergeZone.ok.shift()!,
+        from: ProcessingOrderFrom.both
+      };
+      if (mergeZone.ok.length === 0) {
+        this.mergeZones.shift();
+      }
+      return {
+        done: false,
+        value: nextValue
+      };
     } else if (isConflictMergeZone(mergeZone)) {
-      let {a, b} = mergeZone.conflict;
-      const {o} = mergeZone.conflict;
-      for (; a.length > 0 && b.length > 0; ) {
-        const leftId: Id | null = a.length > 0 ? a[0] : null;
-        const rightId: Id | null = b.length > 0 ? b[0] : null;
-        if (leftId === null) {
-          idsInProcessingOrder.push(
-            ...b.map(id => ({_id: id, from: ProcessingOrderFrom.right}))
-          );
-          b = [];
-        } else if (rightId === null) {
-          idsInProcessingOrder.push(
-            ...a.map(id => ({_id: id, from: ProcessingOrderFrom.left}))
-          );
-          a = [];
+      let nextValue: IProcessingOrderElement | null = null;
+      if (
+        mergeZone.conflict.a.length === 0 &&
+        mergeZone.conflict.b.length > 0
+      ) {
+        nextValue = {
+          _id: mergeZone.conflict.b.shift()!,
+          from: ProcessingOrderFrom.right
+        };
+      } else if (
+        mergeZone.conflict.b.length === 0 &&
+        mergeZone.conflict.a.length > 0
+      ) {
+        nextValue = {
+          _id: mergeZone.conflict.a.shift()!,
+          from: ProcessingOrderFrom.left
+        };
+      } else {
+        const {
+          conflict: {a, b, o}
+        } = mergeZone;
+        const leftId = a[0];
+        const rightId = b[0];
+        if (leftId === rightId) {
+          nextValue = {
+            _id: mergeZone.conflict.a.shift()!,
+            from: ProcessingOrderFrom.left
+          };
+          mergeZone.conflict.b.shift();
         } else {
-          if (leftId === rightId) {
-            idsInProcessingOrder.push({
-              _id: b.shift()!,
-              from: ProcessingOrderFrom.both
-            });
+          const baseEl =
+            o.length > 0
+              ? (mappedElement(
+                  this.mergeCtx.baseDoc.maps,
+                  this.childType,
+                  o[0]
+                ) as IParentedId<U, U>)
+              : null;
+          const leftEl: IParentedId<U, U> | null = leftId
+            ? (mappedElement(
+                this.mergeCtx.myDoc().maps,
+                this.childType,
+                leftId
+              ) as IParentedId<U, U>)
+            : null;
+          const rightEl: IParentedId<U, U> | null = rightId
+            ? (mappedElement(
+                this.mergeCtx.theirDoc().maps,
+                this.childType,
+                rightId
+              ) as IParentedId<U, U>)
+            : null;
+          const {cmpSiblings} = fnsForElementType(
+            this.mergeCtx,
+            this.parentType
+          );
+          const siblingsComparison = cmpSiblings(
+            baseEl,
+            leftEl,
+            rightEl,
+            this.mergeCtx
+          );
+          nextValue = {
+            _id:
+              siblingsComparison === 0 || siblingsComparison < 1 ? a[0] : b[0],
+            from:
+              siblingsComparison === 0
+                ? ProcessingOrderFrom.both
+                : siblingsComparison < 1
+                ? ProcessingOrderFrom.left
+                : ProcessingOrderFrom.right
+          };
+          if (siblingsComparison <= 0) {
             a.shift();
-            if (o.length > 0 && leftId === o[0]) {
-              o.shift();
-            }
-          } else {
-            const baseEl =
-              b.length > 0
-                ? (mappedElement(
-                    mergeCtx.mergedDoc.maps,
-                    childType,
-                    o[0]
-                  ) as IParentedId<U, U>)
-                : null;
-            const leftEl: IParentedId<U, U> | null = leftId
-              ? (mappedElement(
-                  mergeCtx.myDoc.maps,
-                  childType,
-                  leftId
-                ) as IParentedId<U, U>)
-              : null;
-            const rightEl: IParentedId<U, U> | null = rightId
-              ? (mappedElement(
-                  mergeCtx.theirDoc.maps,
-                  childType,
-                  rightId
-                ) as IParentedId<U, U>)
-              : null;
-            const siblingsComparison = cmpSiblings(
-              baseEl,
-              leftEl,
-              rightEl,
-              mergeCtx
-            );
-            const idPicked: Id =
-              siblingsComparison === 0 || siblingsComparison < 1 ? a[0] : b[0];
-            idsInProcessingOrder.push({
-              _id: idPicked,
-              from:
-                siblingsComparison === 0
-                  ? ProcessingOrderFrom.both
-                  : siblingsComparison < 1
-                  ? ProcessingOrderFrom.left
-                  : ProcessingOrderFrom.right
-            });
-            if (a.length > 0 && a[0] === idPicked) {
-              a.shift();
-            }
-            if (b.length > 0 && b[0] === idPicked) {
-              b.shift();
-            }
-            if (o.length > 0 && o[0] === idPicked) {
-              o.shift();
-            }
+          }
+          if (siblingsComparison >= 0) {
+            b.shift();
+          }
+          if (o.length > 0) {
+            o.shift();
+          }
+        }
+      }
+      if (
+        mergeZone.conflict.a.length === 0 &&
+        mergeZone.conflict.b.length === 0
+      ) {
+        this.mergeZones.shift();
+      }
+      return nextValue
+        ? {
+            done: false,
+            value: nextValue
+          }
+        : {
+            done: true,
+            value: undefined
+          };
+    } else {
+      return {
+        done: true,
+        value: undefined
+      };
+    }
+  };
+
+  public reId(existingId: Id, newId: Id, sideToReId: ProcessingOrderFrom) {
+    if (
+      sideToReId === ProcessingOrderFrom.left ||
+      sideToReId === ProcessingOrderFrom.both
+    ) {
+      for (let i = 0; i < this._leftArray.length; i++) {
+        if (this._leftArray[i] === existingId) {
+          this._leftArray[i] = newId;
+        }
+      }
+    }
+    if (
+      sideToReId === ProcessingOrderFrom.right ||
+      sideToReId === ProcessingOrderFrom.both
+    ) {
+      for (let i = 0; i < this._rightArray.length; i++) {
+        if (this._rightArray[i] === existingId) {
+          this._rightArray[i] = newId;
+        }
+      }
+    }
+    for (const mergeZone of this.mergeZones) {
+      if (isOkMergeZone(mergeZone)) {
+        for (let i = 0; i < mergeZone.ok.length; i++) {
+          if (mergeZone.ok[i] === existingId) {
+            mergeZone.ok[i] = newId;
+          }
+        }
+      } else if (isConflictMergeZone(mergeZone)) {
+        for (let i = 0; i < mergeZone.conflict.a.length; i++) {
+          if (mergeZone.conflict.a[i] === existingId) {
+            mergeZone.conflict.a[i] = newId;
+          }
+        }
+        for (let i = 0; i < mergeZone.conflict.b.length; i++) {
+          if (mergeZone.conflict.b[i] === existingId) {
+            mergeZone.conflict.b[i] = newId;
+          }
+        }
+        for (let i = 0; i < mergeZone.conflict.o.length; i++) {
+          if (mergeZone.conflict.o[i] === existingId) {
+            mergeZone.conflict.o[i] = newId;
           }
         }
       }
     }
   }
-  return idsInProcessingOrder;
+
+  public [Symbol.iterator](): IterableIterator<IProcessingOrderElement> {
+    return this;
+  }
 }
 
 /**
@@ -913,7 +1112,7 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
     arePositionsCompatible,
     onIncompatibleElementVersions
   } = fnsForElementType(mergeCtx, childType);
-  const childrenToProcess: IProcessingOrderElement[] = determineLinkedArrayProcessingOrder(
+  const idsToProcessIterator = new NextSiblingToProcessIterator(
     mergeCtx,
     parentType,
     parentId,
@@ -922,48 +1121,55 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
   );
   const childrenToQueue: Array<[U, Id]> = [];
   const parentPath = pathForElementWithId(mergedDoc, parentType, parentId);
-  const leftArray: Id[] = hasMappedElement(
-    mergeCtx.myDoc.maps,
-    parentType,
-    parentId
-  )
-    ? (mappedElement(mergeCtx.myDoc.maps, parentType, parentId)[
-        linkedArrayField
-      ] as Id[]).slice()
-    : [];
-  const rightArray: Id[] = hasMappedElement(
-    mergeCtx.theirDoc.maps,
-    parentType,
-    parentId
-  )
-    ? (mappedElement(mergeCtx.theirDoc.maps, parentType, parentId)[
-        linkedArrayField
-      ] as Id[]).slice()
-    : [];
   for (
-    let i = 0, il = 0, ir = 0, mergedIndex = 0;
-    i < childrenToProcess.length;
-    i++
+    let i = 0,
+      il = 0,
+      ir = 0,
+      mergedIndex = 0,
+      nextId = idsToProcessIterator.next();
+    !nextId.done;
+    nextId = idsToProcessIterator.next(), i++
   ) {
     const mergedIndexAtStart = mergedIndex;
     const baseArray = mappedElement(mergedDoc.maps, parentType, parentId)[
       linkedArrayField
     ] as Id[];
+    const leftArray: Id[] = hasMappedElement(
+      mergeCtx.myDoc().maps,
+      parentType,
+      parentId
+    )
+      ? (mappedElement(mergeCtx.myDoc().maps, parentType, parentId)[
+          linkedArrayField
+        ] as Id[])
+      : [];
+    const rightArray: Id[] = hasMappedElement(
+      mergeCtx.theirDoc().maps,
+      parentType,
+      parentId
+    )
+      ? (mappedElement(mergeCtx.theirDoc().maps, parentType, parentId)[
+          linkedArrayField
+        ] as Id[])
+      : [];
     const baseChildId =
       baseArray.length > mergedIndex ? baseArray[mergedIndex] : null;
     const leftChildId = leftArray.length > il ? leftArray[il] : null;
     const rightChildId = rightArray.length > ir ? rightArray[ir] : null;
-    const {_id: childId, from: childFrom} = childrenToProcess[i];
+    const {_id: childId, from: childFrom} = nextId.value;
     if (childId === leftChildId) il++;
     if (childId === rightChildId) ir++;
     const baseElement = hasMappedElement(mergedDoc.maps, childType, childId)
       ? (mappedElement(mergedDoc.maps, childType, childId) as IParentedId<U, U>)
       : null;
-    const leftElement = hasMappedElement(myDoc.maps, childType, childId)
-      ? (mappedElement(myDoc.maps, childType, childId) as IParentedId<U, U>)
+    const leftElement = hasMappedElement(myDoc().maps, childType, childId)
+      ? (mappedElement(myDoc().maps, childType, childId) as IParentedId<U, U>)
       : null;
-    const rightElement = hasMappedElement(theirDoc.maps, childType, childId)
-      ? (mappedElement(theirDoc.maps, childType, childId) as IParentedId<U, U>)
+    const rightElement = hasMappedElement(theirDoc().maps, childType, childId)
+      ? (mappedElement(theirDoc().maps, childType, childId) as IParentedId<
+          U,
+          U
+        >)
       : null;
     const childUid = getElementUid(childType, childId);
     if (baseElement) {
@@ -975,7 +1181,7 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
         rightState &&
         rightState.isInEditedPath
       ) {
-        if (arePositionsCompatible(childId, mergeCtx)) {
+        if (arePositionsCompatible(childId, childFrom, mergeCtx)) {
           if (!leftState.hasPositionBeenProcessed) {
             if (baseChildId !== childId) {
               moveToMergePosition(
@@ -990,14 +1196,22 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
             rightState.hasPositionBeenProcessed = true;
           }
         } else {
-          const shouldAdvance = onIncompatibleElementVersions(
+          const {
+            advancedMergingIndex,
+            rebasedIds
+          } = onIncompatibleElementVersions(
             childId,
             parentPath,
             [linkedArrayField, mergedIndex],
-            childFrom === ProcessingOrderFrom.right ? 'right' : 'left',
+            childFrom === ProcessingOrderFrom.right
+              ? ProcessingOrderFrom.right
+              : ProcessingOrderFrom.left,
             mergeCtx
           );
-          if (shouldAdvance) mergedIndex++;
+          for (const {_id: oldId, newId, rebasedSide} of rebasedIds) {
+            idsToProcessIterator.reId(oldId, newId, rebasedSide);
+          }
+          if (advancedMergingIndex) mergedIndex++;
         }
       } else if (
         (leftState && leftState.isInEditedPath) ||
@@ -1055,7 +1269,7 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
       } else {
         // The node is present in both nodes but it hasn't been edited.
         // We add it on the first occurrence
-        if (leftState!.hasPositionBeenProcessed) {
+        if (!leftState!.hasPositionBeenProcessed) {
           if (childId !== baseChildId) {
             moveToMergePosition(
               childId,
@@ -1094,6 +1308,17 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
 
 function getElementUid<U>(elementType: U, elemendId: Id): string {
   return `${elementType}:${elemendId}`;
+}
+
+function getTypeAndIdFromUid<U>(uid: string): {_id: Id; __typename: U} {
+  const parts = uid.split(':');
+  if (parts.length < 2) {
+    throw new TypeError('Invalid uid');
+  }
+  return {
+    _id: parts[0],
+    __typename: (parts[1] as any) as U
+  };
 }
 
 /**
@@ -1143,7 +1368,7 @@ function buildMergeElementsState<MapsInterface, U extends keyof MapsInterface>(
       if (!isParentedId(element)) {
         nextId = null;
       } else {
-        const elementUid = getElementUid(__typename, _id);
+        const elementUid = getElementUid(nextType, nextId);
         const elementState = mergeElementsState.get(elementUid);
         if (elementState) {
           mergeElementsState.set(elementUid, {

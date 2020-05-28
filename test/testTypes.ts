@@ -1,14 +1,34 @@
-import {Id, IDocumentSchema, INormalizedDocument, IParentedId} from '../src/HTypes'
+import {Id, IDocumentSchema, INormalizedDocument, IParentedId, IParentedNode} from '../src'
+import {omit} from 'lodash'
 
-export interface IRoot extends IParentedId<'Root', null> {
+export interface IRootFields {
   name: string;
   createdAt: Date;
 }
 
-export interface INode extends IParentedId<'Node', 'Root' | 'Node'> {
+export interface IRoot extends IParentedId<'Root', null>, IRootFields {
+  children: Id[];
+}
+
+export interface IRootNode extends IParentedNode<'Root', null>, IRootFields {
+  children: INodeNode[];
+}
+
+export interface INodeFields {
   text: string;
   isChecked: boolean;
+}
+
+export interface INode
+  extends IParentedId<'Node', 'Root' | 'Node'>,
+    INodeFields {
   children: Id[];
+}
+
+export interface INodeNode
+  extends IParentedNode<'Node', IRootNode | INodeNode>,
+    INodeFields {
+  children: INodeNode[];
 }
 
 export interface ITestDocElementsMap {
@@ -25,14 +45,53 @@ export const testDocSchema: IDocumentSchema<ITestDocElementsMap> = {
   documentType: 'TestDocSchema',
   rootType: 'Root',
   types: {
-    'Root': {
+    Root: {
       children: [{__schemaType: 'Node', notNull: true}]
     },
-    'Node': {
-      children: [{
-        __schemaType: 'Node',
-        notNull: true
-      }]
+    Node: {
+      children: [
+        {
+          __schemaType: 'Node',
+          notNull: true
+        }
+      ]
     }
   }
+};
+export const creationDate = new Date()
+export const emptyTestDocument = (): TestNormalizeDocument => ({
+  maps: {
+    Root: new Map([
+      [
+        1,
+        {
+          __typename: 'Root',
+          _id: 1,
+          createdAt: creationDate,
+          name: 'root',
+          children: [],
+          parentType: null,
+          parentId: null
+        }
+      ]
+    ]),
+    Node: new Map()
+  },
+  rootType: 'Root',
+  rootId: 1,
+  schema: testDocSchema
+})
+
+function removeNodeParent(node: INodeNode) {
+  delete node.parent
+  for (const child of node.children) {
+    removeNodeParent(child)
+  }
+}
+
+export function removeParents(root: IRootNode) {
+  for (const node of root.children) {
+    removeNodeParent(node)
+  }
+  return omit(root, 'parent')
 }

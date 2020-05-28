@@ -41,8 +41,7 @@ export type AllMappedTypesFields<T> = ValueOf<KeysOfMappedTypes<T>>;
 export type AllMappedTypes<T> = ValueOf<MappedParentedTypes<T>>;
 
 export interface IParentedId<ElementType = any, ParentType = any>
-  extends IId,
-    Object {
+  extends IId {
   __typename: ElementType;
   parentId: null | Id;
   parentType: null | ParentType;
@@ -193,7 +192,7 @@ export interface IInsertElement<
   __typename: HDocCommandType.INSERT_ELEMENT;
   parentPath: Path<MapsInterface>;
   position: SubEntityPathElement<MapsInterface>;
-  element: Omit<Pick<T, Mandatory>, '_id'> &
+  element: Omit<Pick<T, Mandatory>, '_id' | 'parentId' | 'parentType'> &
     Partial<Omit<T, '_id' & Mandatory>> & {
       _id?: Id;
     };
@@ -528,14 +527,21 @@ export interface IPositionConflict<MapsInterface> {
  * S. Fields are present only for those fields that are
  * in conflict.
  */
-export type ElementInfoConflicts<S> = {
+export type ElementInfoConflicts<S extends object> = {
   [F in keyof S]?: IValueConflict<S[F]>;
 };
 
-export interface IElementConflicts<MapsInterface, S> {
+export interface IElementConflicts<MapsInterface, S extends {}> {
   infoConflicts?: ElementInfoConflicts<S>;
   positionConflicts?: IPositionConflict<MapsInterface>;
 }
+
+export type ConflictMapKeys<
+  MapsInterface,
+  U extends keyof MapsInterface
+  > = {
+  [F in U]: MapsInterface[F] extends Map<Id, infer S> ? F : never;
+}[U];
 
 /**
  * For each mapped element, creates a map Id -> ElementConflicts record.
@@ -544,12 +550,12 @@ export interface IElementConflicts<MapsInterface, S> {
  */
 export type ConflictsMap<
   MapsInterface,
-  U extends keyof MapsInterface = keyof MapsInterface
+  U extends keyof MapsInterface
 > = {
-  [F in keyof MapsInterface]: Map<
+  [F in U]: MapsInterface[F] extends Map<Id, infer S> ? Map<
     Id,
-    IElementConflicts<MapsInterface, MapsInterface[F]>
-  >;
+    IElementConflicts<MapsInterface, S>
+  > : never;
 };
 
 /**
@@ -568,20 +574,28 @@ export interface IVisitor<
       | INormalizedMutableMapsDocument<MapsInterface, U>,
     nodeType: U,
     nodeId: Id,
-    context: Context
+    context?: Context
   ): void;
 }
 
 /**
  * Represents the results returned from a 3-way merge of a HDocument.
  *
- * It includes a working version of the document, and a map of the conflicts
+ * It includes a working version of the document and a map of the conflicts
  * the merge generated, if any.
  */
 export interface II3MergeResult<MapsInterface, U extends keyof MapsInterface> {
+  /**
+   * The merged document, which is still a normalized document. It contains the
+   * provisional victors of any conflicts generated during the merge
+   */
   mergedDoc: INormalizedDocument<MapsInterface, U>;
+
+  /**
+   * For each entity type in the normalised document, it has a conflict map
+   * that has one record for each element of that type that has at least a conflict.
+   */
   conflicts: ConflictsMap<MapsInterface, U>;
-  delta: Array<HDocOperation<MapsInterface, AllMappedTypes<MapsInterface>, U>>;
 }
 
 /**
@@ -596,6 +610,10 @@ export interface IMergeElementsState {
   mergedElementId: Id;
 }
 
+export interface IGetterSetter<T> {
+  (value?: T): T;
+}
+
 /**
  * The merge context is used during a three way merge to track progress
  * and allow higher-level data structures to change how the merge works
@@ -607,12 +625,41 @@ export interface IMergeElementsState {
 export interface II3WMergeContext<MapsInterface, U extends keyof MapsInterface> {
   myElementsMergeState: Map<string, IMergeElementsState>;
   theirElementsMergeState: Map<string, IMergeElementsState>;
-  myDoc: INormalizedDocument<MapsInterface, U>;
-  theirDoc: INormalizedDocument<MapsInterface, U>;
+  baseDoc: INormalizedDocument<MapsInterface, U>;
+  myDoc: IGetterSetter<INormalizedDocument<MapsInterface, U>>;
+  theirDoc: IGetterSetter<INormalizedDocument<MapsInterface, U>>;
   elementsToDelete: Array<{ __typename: U; _id: Id }>;
   mergedDoc: IMutableDocument<MapsInterface, U>;
   conflicts: ConflictsMap<MapsInterface, U>;
   overrides?: MergeOverrides<MapsInterface, U, any>;
+}
+
+/**
+ * When an element has been moved to incompatible parts
+ * of the document, a custom resolution of the conflict
+ * should tell the merge function two things:
+ * 1) is the current mergingIndex to be included in the
+ * final merged document, and we should advance to the next
+ * or not
+ * 2)
+ */
+export interface IOnIncompatibleArrayElementsResult {
+  /**
+   * true if the current mergingIndex is to be included in the
+   * final merged document
+   */
+  advancedMergingIndex: boolean;
+
+  /**
+   * If to resolve the conflict we had to rebase a version
+   * of the document, we list here the _ids that were rebased
+   * and which side we rebased
+   */
+  rebasedIds: Array<{
+    _id: Id;
+    newId: Id;
+    rebasedSide: ProcessingOrderFrom;
+  }>;
 }
 
 /**
@@ -650,7 +697,7 @@ export interface IMergeElementOverrides<MapsInterface,
    * @returns {ElementInfoConflicts<ElementType>}
    */
   mergeElementInfo: (
-    base: ElementType,
+    base: ElementType | null,
     a: ElementType | null,
     b: ElementType | null,
     mergeContext: II3WMergeContext<MapsInterface, U>
@@ -666,9 +713,14 @@ export interface IMergeElementOverrides<MapsInterface,
 
   /**
    * Called when an element is present in all the versions
-   * of the document being merged, but has been moved to different places
-   * within the document's hierarchy. If true is returned, instead of the
-   * node in a different position being cloned, we consider this position to be
+   * of the document being merged, but has been edited in both later versions.
+   *
+   * This function determines if the merged tree will retain a single element that
+   * merges the information from the two branches, or if one of the two versions of
+   * the element will be cloned as a new subtree.
+   *
+   * If true is returned, instead of the node in a different position being cloned,
+   * we consider this position to be
    * fine for the other version of the document as well and only one copy of the
    * element will be kept (and merged).
    *
@@ -682,6 +734,7 @@ export interface IMergeElementOverrides<MapsInterface,
    */
   arePositionsCompatible: (
     elementId: Id,
+    fromSide: ProcessingOrderFrom,
     mergeContext: II3WMergeContext<MapsInterface, U>
   ) => boolean;
 
@@ -734,9 +787,9 @@ export interface IMergeElementOverrides<MapsInterface,
     elementId: Id,
     parentPath: Path<MapsInterface>,
     position: SubEntityPathElement<MapsInterface>,
-    versionMoved: 'left' | 'right',
+    versionMoved: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
     mergeContext: II3WMergeContext<MapsInterface, U>
-  ) => boolean;
+  ) => IOnIncompatibleArrayElementsResult;
 }
 
 export type MergeOverrides<MapsInterface,
@@ -744,3 +797,21 @@ export type MergeOverrides<MapsInterface,
   ElementType extends IParentedId<U, U>> = {
   [F in U]?: Partial<IMergeElementOverrides<MapsInterface, U, ElementType>>;
 };
+
+// Represents a denormalized node, where parentType and
+// parentId are replaced by a parent pointer
+export interface IParentedNode<U = any, P = IParentedNode<any, any>> extends IId {
+  __typename: U;
+  parent: null | P;
+}
+
+export enum ProcessingOrderFrom {
+  both,
+  left,
+  right
+}
+
+export interface IProcessingOrderElement {
+  _id: Id;
+  from: ProcessingOrderFrom;
+}

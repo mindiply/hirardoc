@@ -1,5 +1,6 @@
 export * from './HTypes';
 export {
+  docReducer,
   isParentedId,
   mappedElement,
   isParentedMap,
@@ -14,4 +15,5 @@ export {
 } from './HDocument';
 export {diff, diffInfoOf} from './HDiff';
 export {visitDocument} from './HVisit';
-export {threeWayMerge} from './HVersioning';
+export {threeWayMerge} from './HMerge3';
+export {denormalizeDocument} from './HDenormalize';

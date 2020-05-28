@@ -5,14 +5,14 @@ import {
   AllMappedTypes,
   AllMappedTypesFields,
   EntitiesMaps,
-  EntityReference,
   EntityReferences,
   HDocCommandType,
   HDocOperation,
   Id,
   IDocumentSchema,
   IFieldEntityReference,
-  IInsertElement, ILazyMutableMap,
+  IInsertElement,
+  ILazyMutableMap,
   IMoveElement,
   IMutableDocument,
   INormalizedDocument,
@@ -21,10 +21,14 @@ import {
   MutableEntitiesMaps,
   Path,
   SubEntityPathElement
-} from './HTypes'
+} from './HTypes';
 
 export function isId(obj: any): obj is Id {
-  return (obj !== '' && typeof obj === 'number') || typeof obj === 'string';
+  return typeof obj === 'number' || (obj !== '' && typeof obj === 'string');
+}
+
+export function isNullableId(obj: any): obj is Id | null {
+  return obj === null || isId(obj);
 }
 
 export function isParentedId(obj: any): obj is IParentedId {
@@ -32,7 +36,7 @@ export function isParentedId(obj: any): obj is IParentedId {
     typeof obj === 'object' &&
     isId(obj._id) &&
     typeof obj.__typename === 'string' &&
-    obj.parentType === 'string' &&
+    (obj.parentType === null || typeof obj.parentType === 'string') &&
     (obj.parentId === null || isId(obj.parentId))
   );
 }
@@ -278,8 +282,7 @@ export function idAndTypeForPath<MapsInterface, U extends keyof MapsInterface>(
   let docContext: IParentedId = doc.maps[doc.rootType].get(
     doc.rootId
   )! as IParentedId;
-  let schemaContext: EntityReferences<U> | EntityReference<U> =
-    schema.types[schema.rootType];
+  let schemaContext: EntityReferences<U> = schema.types[schema.rootType];
   for (let i = 0; trimmedPath.length > 0 && i < 10000; i++) {
     const {remainingPath, element} = nextElementTypeAndId(
       doc,
@@ -324,7 +327,7 @@ function nextElementTypeAndId<MapsInterface, U extends keyof MapsInterface>(
     | INormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   docContext: Id | IParentedId<U> | IMutableDocument<MapsInterface, U>,
-  schemaContext: EntityReferences<U> | EntityReference<U>,
+  schemaContext: EntityReferences<U> | [IFieldEntityReference<U>],
   subPath: Path<MapsInterface>
 ): INextElementAndIdRetVal<MapsInterface, U> {
   const typeMap = getSchemaTypeMap(doc.schema);
@@ -441,6 +444,20 @@ function parentToChildTypeMappings<
   return parentMappings.children[childType]!;
 }
 
+export function parentToChildFieldName<
+  MapsInterface,
+  U extends keyof MapsInterface
+  >(
+  document:
+    | INormalizedDocument<MapsInterface, U>
+    | INormalizedMutableMapsDocument<MapsInterface, U>,
+  parentType: U,
+  childType: U
+): AllMappedTypesFields<MapsInterface> {
+  const linkedFieldProps = parentToChildTypeMappings(document, parentType, childType);
+  return linkedFieldProps.field;
+}
+
 /**
  * Creates a dictionary of types for the schema passed as parameter.
  *
@@ -461,7 +478,7 @@ function createTypesMapForSchema<
     const typeSettings = schema.types[typeName];
     for (const fieldName in typeSettings) {
       if (fieldName === 'parentId') continue;
-      const fieldValue = typeSettings[fieldName] as EntityReference<U>;
+      const fieldValue = typeSettings[fieldName];
       const childFieldSettings = Array.isArray(fieldValue)
         ? fieldValue[0]
         : fieldValue;
@@ -477,22 +494,9 @@ function createTypesMapForSchema<
   for (const typeName in schema.types) {
     const typeSettings = schema.types[typeName];
     const typeEntry = {children: {}} as TypeLinks<MapsInterface, U>;
-    if (
-      typeSettings.parentId &&
-      childMap.has(typeSettings.parentId.__schemaType)
-    ) {
-      const parentChildMap = childMap.get(typeSettings.parentId.__schemaType)!;
-      if (typeName in parentChildMap) {
-        typeEntry.parent = {
-          field: ('parentId' as any) as AllMappedTypesFields<MapsInterface>,
-          isArray: false,
-          type: typeSettings.parentId.__schemaType
-        };
-      }
-    }
     for (const fieldName in typeSettings) {
       if (fieldName === 'parentId') continue;
-      const fieldSettingsValue = typeSettings[fieldName] as EntityReference<U>;
+      const fieldSettingsValue = typeSettings[fieldName];
       const childFieldSettings = Array.isArray(fieldSettingsValue)
         ? fieldSettingsValue[0]
         : fieldSettingsValue;
@@ -628,12 +632,12 @@ export function mutableDocument<
         childType
       );
 
-      const parentElement = doc.maps[parentType].get(parentId) as
-        | (IParentedId<U> & {[field: string]: Id | Id[]})
-        | undefined;
-      if (!parentElement) {
-        throw new ReferenceError('Parent element pointed to not found');
-      }
+      const parentElement = mappedElement(
+        doc.maps,
+        parentType,
+        parentId
+      ) as IParentedId<U> & {[field: string]: Id | Id[]};
+
       const parentChildField = parentElement[parentToElementFieldName];
       if (parentChildField && Array.isArray(parentChildField)) {
         const elementIndex = parentChildField.indexOf(toRemoveElement._id);
@@ -697,7 +701,7 @@ export function mutableDocument<
     ) as IParentedId;
     const parentSchema = doc.schema.types[parentType];
     if (!parentSchema) {
-      throw new Error(`Schema for parent type ${parentType} not found`);
+      throw new TypeError(`Schema for parent type ${parentType} not found`);
     }
     const field =
       typeof positionInParent === 'string'
@@ -712,9 +716,7 @@ export function mutableDocument<
     ) {
       throw new Error('Position not found for insert operation');
     }
-    const {__schemaType} = Array.isArray(parentSchema[field])
-      ? (parentSchema[field] as IFieldEntityReference<U>[])[0]
-      : (parentSchema[field] as IFieldEntityReference<U>);
+    const {__schemaType} = parentSchema[field][0];
     doc.maps[__schemaType].set(
       childElement._id,
       childElement.parentId === parentId
@@ -726,15 +728,7 @@ export function mutableDocument<
           }
     );
 
-    if (typeof positionInParent === 'string') {
-      doc.maps[parentType].set(parentId, {
-        ...context,
-        [field]: childElement._id
-      });
-    } else if (
-      positionInParent instanceof Array &&
-      positionInParent.length === 2
-    ) {
+    if (positionInParent instanceof Array && positionInParent.length === 2) {
       // expect string and index tuple
       const targetList = ((context as any)[field] as Id[]).slice();
       const index =
@@ -792,16 +786,16 @@ export function mutableDocument<
       const changesToRun = Array.isArray(changes) ? changes : [changes];
       for (const command of changesToRun) {
         if (command.__typename === HDocCommandType.INSERT_ELEMENT) {
-          return this.insertElement(command);
+          this.insertElement(command);
         }
         if (command.__typename === HDocCommandType.CHANGE_ELEMENT) {
-          return this.changeElement(command);
+          this.changeElement(command);
         }
         if (command.__typename === HDocCommandType.DELETE_ELEMENT) {
-          return this.deleteElement(command);
+          this.deleteElement(command);
         }
         if (command.__typename === HDocCommandType.MOVE_ELEMENT) {
-          return this.moveElement(command);
+          this.moveElement(command);
         }
       }
     },
@@ -811,7 +805,7 @@ export function mutableDocument<
     >(insertCmd: IInsertElement<T, MapsInterface, Mandatory, U>): T {
       const {element, parentPath, position, targetElement} = insertCmd;
       if (!isSubEntityPathElement(position)) {
-        throw new Error('Incorrect position paraemeter');
+        throw new Error('Incorrect position parameter');
       }
       const {__typename: parentType, _id: parentId} = this.idAndTypeForPath(
         parentPath
@@ -1097,3 +1091,18 @@ export function mappedElement<
   }
   return typeMap.get(elementId)!;
 }
+
+export const docReducer = <MapsInterface, U extends keyof MapsInterface>(
+  doc: INormalizedDocument<MapsInterface, U>,
+  cmd: HDocOperation<MapsInterface, any, U> | Array<HDocOperation<MapsInterface, any, U>>
+): INormalizedDocument<MapsInterface, U> => {
+  const cmds = Array.isArray(cmd) ? cmd : [cmd];
+  if (cmds.length < 1) return doc;
+  const mutableDoc = mutableDocument(doc);
+  try {
+    mutableDoc.applyChanges(cmds);
+  } catch (err) {
+    // silently eaten
+  }
+  return mutableDoc.updatedDocument();
+};

@@ -66,7 +66,7 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
     laterDoc,
     (doc, nodeType, nodeId) => {
       const destElement = mappedElement(laterDoc.maps, nodeType, nodeId);
-      const mutableElement = mappedElement(mutableDoc.maps, nodeType, nodeId);
+      let mutableElement = mappedElement(mutableDoc.maps, nodeType, nodeId);
       if (!isParentedId(destElement) || !isParentedId(mutableElement)) {
         throw new ReferenceError(`Node ${nodeType}:${nodeId} not found`);
       }
@@ -104,11 +104,14 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
         if (Array.isArray(fieldLink)) {
           const {__schemaType: childType} = fieldLink[0];
           const destChildrenIds: Id[] = (destElement as any)[linkFieldName];
-          const mutableChildrenIds: Id[] = (mutableElement as any)[
-            linkFieldName
-          ].slice();
           for (let i = 0; i < destChildrenIds.length; i++) {
             const destChildId = destChildrenIds[i];
+            // Every iteration of dest child, there is a chance that the mutable
+            // element has changed, so I need to refresh to the latest reference
+            mutableElement = mappedElement(mutableDoc.maps, nodeType, nodeId);
+            const mutableChildrenIds: Id[] = (mutableElement as any)[
+              linkFieldName
+            ];
             const mutableChildId =
               i < mutableChildrenIds.length ? mutableChildrenIds[i] : null;
             const destChild = mappedElement(
@@ -130,8 +133,8 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
                 const childInfoDiff = diffInfoOf(
                   mutableDoc,
                   laterDoc,
-                  nodeType,
-                  nodeId
+                  childType,
+                  destChildId
                 );
                 const moveChildCmd: IMoveElement<
                   MapsInterface,
@@ -172,11 +175,13 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
                 // New element, let's add the basic info from it,
                 // emptying children links
                 const elementInfo = {...(destChild as IParentedId)};
+                const childTypeLinks = doc.schema.types[childType];
+
                 for (const childLinkFieldName in schema.types[childType]) {
                   if (childLinkFieldName === 'parentId') continue;
                   const childFieldLink =
                     schema.types[childType][childLinkFieldName];
-                  (elementInfo as any)[childFieldLink] = Array.isArray(
+                  (elementInfo as any)[childLinkFieldName] = Array.isArray(
                     childFieldLink
                   )
                     ? []
@@ -199,7 +204,7 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
                   element: elementInfo,
                   targetElement: {
                     __typename: childType,
-                    _id: destElement._id
+                    _id: destChild._id
                   }
                 };
                 mutableDoc.insertElement(addChildCmd);
@@ -241,15 +246,17 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
   visitDocument(
     mutableDoc,
     (doc, nodeType, nodeId) => {
-      const deleteElementCmd: IDeleteElement<MapsInterface, U> = {
-        __typename: HDocCommandType.DELETE_ELEMENT,
-        path: pathForElementWithId(doc, nodeType, nodeId),
-        targetElement: {
-          __typename: nodeType,
-          _id: nodeId
-        }
-      };
-      mutableDoc.deleteElement(deleteElementCmd);
+      if (!hasMappedElement(laterDoc.maps, nodeType, nodeId)) {
+        const deleteElementCmd: IDeleteElement<MapsInterface, U> = {
+          __typename: HDocCommandType.DELETE_ELEMENT,
+          path: pathForElementWithId(doc, nodeType, nodeId),
+          targetElement: {
+            __typename: nodeType,
+            _id: nodeId
+          }
+        };
+        mutableDoc.deleteElement(deleteElementCmd);
+      }
     },
     {},
     DocumentVisitTraversal.DEPTH_FIRST

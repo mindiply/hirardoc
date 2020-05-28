@@ -68,30 +68,24 @@ The merging strategy for these data fields depends on the data type:
           If node in base
             If leftEdited and rightEdited
               If positionCompatible(base, left, right)
-            If thisPostionWins
-              moveToMergePosition()
-                   j++
-                 else
-                   Skip, we will add the other position
-                
+                If !leftProcessed && currentArray[j] !== node._id
+                    moveToMergePosition()
+                j++
               Else
                 shouldAdvance = customResolution ? customeRsolution () :
                   Reid subtree of element in other position
-                  For node at this position:
                   If currentArray[j] !== node._id
                     moveToMergePosition()
                   Else
                     noOp -- contents merged later in visit
                 If shouldAdvance j++        
             Else if editedInOne
-           If thisOneEdited
+              If thisOneEdited
                 If currentArray[j] !== node._id
                     moveToMergePosition()
-             j++
+                j++
               Else 
                 Skip, the other one is edited
-              Else
-                noOp -- If is already in position from base
             Else if removedInOne
               noOp, move to next, already in position
             Else // it wasn’t edited, but the node is still in both trees

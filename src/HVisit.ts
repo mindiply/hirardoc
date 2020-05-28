@@ -29,7 +29,7 @@ export function visitDocument<
     | INormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   onNodeVisit: IVisitor<MapsInterface, U>,
-  context: Context,
+  context?: Context,
   traversal = DocumentVisitTraversal.BREADTH_FIRST,
   elementType?: U,
   elementId?: Id
