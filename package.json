@@ -2,7 +2,8 @@
   "name": "hirardoc",
   "version": "0.0.1",
   "description": "Hierarchical normalised and offline first documents library",
-  "main": "dist/index.js",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "dependencies": {
     "node-diff3": "^2.0.1",
     "uuid": "^8.1.0",

@@ -40,8 +40,7 @@ export type AllMappedTypesFields<T> = ValueOf<KeysOfMappedTypes<T>>;
  */
 export type AllMappedTypes<T> = ValueOf<MappedParentedTypes<T>>;
 
-export interface IParentedId<ElementType = any, ParentType = any>
-  extends IId {
+export interface IParentedId<ElementType = any, ParentType = any> extends IId {
   __typename: ElementType;
   parentId: null | Id;
   parentType: null | ParentType;
@@ -527,19 +526,16 @@ export interface IPositionConflict<MapsInterface> {
  * S. Fields are present only for those fields that are
  * in conflict.
  */
-export type ElementInfoConflicts<S extends object> = {
+export type ElementInfoConflicts<S> = {
   [F in keyof S]?: IValueConflict<S[F]>;
 };
 
-export interface IElementConflicts<MapsInterface, S extends {}> {
+export interface IElementConflicts<MapsInterface, S> {
   infoConflicts?: ElementInfoConflicts<S>;
   positionConflicts?: IPositionConflict<MapsInterface>;
 }
 
-export type ConflictMapKeys<
-  MapsInterface,
-  U extends keyof MapsInterface
-  > = {
+export type ConflictMapKeys<MapsInterface, U extends keyof MapsInterface> = {
   [F in U]: MapsInterface[F] extends Map<Id, infer S> ? F : never;
 }[U];
 
@@ -548,14 +544,10 @@ export type ConflictMapKeys<
  * Additional data structure that models conflicts resulting from merging
  * different branches of a document.
  */
-export type ConflictsMap<
-  MapsInterface,
-  U extends keyof MapsInterface
-> = {
-  [F in U]: MapsInterface[F] extends Map<Id, infer S> ? Map<
-    Id,
-    IElementConflicts<MapsInterface, S>
-  > : never;
+export type ConflictsMap<MapsInterface, U extends keyof MapsInterface> = {
+  [F in U]: MapsInterface[F] extends Map<Id, infer S>
+    ? Map<Id, IElementConflicts<MapsInterface, S>>
+    : never;
 };
 
 /**
@@ -622,13 +614,16 @@ export interface IGetterSetter<T> {
  * The overridable functions during the merge always receive this object
  * as part of their list of parameters
  */
-export interface II3WMergeContext<MapsInterface, U extends keyof MapsInterface> {
+export interface II3WMergeContext<
+  MapsInterface,
+  U extends keyof MapsInterface
+> {
   myElementsMergeState: Map<string, IMergeElementsState>;
   theirElementsMergeState: Map<string, IMergeElementsState>;
   baseDoc: INormalizedDocument<MapsInterface, U>;
   myDoc: IGetterSetter<INormalizedDocument<MapsInterface, U>>;
   theirDoc: IGetterSetter<INormalizedDocument<MapsInterface, U>>;
-  elementsToDelete: Array<{ __typename: U; _id: Id }>;
+  elementsToDelete: Array<{__typename: U; _id: Id}>;
   mergedDoc: IMutableDocument<MapsInterface, U>;
   conflicts: ConflictsMap<MapsInterface, U>;
   overrides?: MergeOverrides<MapsInterface, U, any>;
@@ -666,9 +661,11 @@ export interface IOnIncompatibleArrayElementsResult {
  * Customisation hooks for an element type. This way each element type
  * can deviate from the default handling of merges.
  */
-export interface IMergeElementOverrides<MapsInterface,
+export interface IMergeElementOverrides<
+  MapsInterface,
   U extends keyof MapsInterface,
-  ElementType extends IParentedId> {
+  ElementType extends IParentedId
+> {
   /**
    * Comparison used to determine the processing order of an array linked field. The elements
    * compared will be from the two later branches of a three-way merge to determine which
@@ -792,15 +789,18 @@ export interface IMergeElementOverrides<MapsInterface,
   ) => IOnIncompatibleArrayElementsResult;
 }
 
-export type MergeOverrides<MapsInterface,
+export type MergeOverrides<
+  MapsInterface,
   U extends keyof MapsInterface,
-  ElementType extends IParentedId<U, U>> = {
+  ElementType extends IParentedId<U, U>
+> = {
   [F in U]?: Partial<IMergeElementOverrides<MapsInterface, U, ElementType>>;
 };
 
 // Represents a denormalized node, where parentType and
 // parentId are replaced by a parent pointer
-export interface IParentedNode<U = any, P = IParentedNode<any, any>> extends IId {
+export interface IParentedNode<U = any, P = IParentedNode<any, any>>
+  extends IId {
   __typename: U;
   parent: null | P;
 }

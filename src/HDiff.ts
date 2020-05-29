@@ -175,8 +175,6 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
                 // New element, let's add the basic info from it,
                 // emptying children links
                 const elementInfo = {...(destChild as IParentedId)};
-                const childTypeLinks = doc.schema.types[childType];
-
                 for (const childLinkFieldName in schema.types[childType]) {
                   if (childLinkFieldName === 'parentId') continue;
                   const childFieldLink =

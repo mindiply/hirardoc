@@ -1,4 +1,4 @@
-import {ILazyMutableMap, ILazyMutableMapDelta} from './HTypes'
+import {ILazyMutableMap, ILazyMutableMapDelta} from './HTypes';
 
 export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
   protected readonly originalValuesMap: Map<K, V>;

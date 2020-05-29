@@ -1,16 +1,21 @@
-import {v1 as uuid} from 'uuid'
-import {diff3Merge, IMergeConflictRegion, IMergeOkRegion, MergeRegion} from 'node-diff3'
+import {v1 as uuid} from 'uuid';
+import {
+  diff3Merge,
+  IMergeConflictRegion,
+  IMergeOkRegion,
+  MergeRegion
+} from 'node-diff3';
 import {
   cloneNormalizedDocument,
   hasMappedElement,
   idAndTypeForPath,
-  isId, isNullableId,
+  isNullableId,
   isParentedId,
   mappedElement,
   mutableDocument,
   parentToChildFieldName,
   pathForElementWithId
-} from './HDocument'
+} from './HDocument';
 import {
   AllMappedTypesFields,
   ConflictsMap,
@@ -41,9 +46,9 @@ import {
   Path,
   ProcessingOrderFrom,
   SubEntityPathElement
-} from './HTypes'
-import {visitDocument} from './HVisit'
-import {diff, diffElementInfo, diffInfoOf} from './HDiff'
+} from './HTypes';
+import {visitDocument} from './HVisit';
+import {diff, diffElementInfo} from './HDiff';
 
 type DataValue = string | Date | number | boolean;
 
@@ -667,20 +672,40 @@ function fnsForElementType<
           },
       arePositionsCompatible: elementOverrides.arePositionsCompatible
         ? elementOverrides.arePositionsCompatible
-        : (
-            elementId,
-            fromSide,
-            mergeContext
-          )=> {
-            const leftElement = hasMappedElement(mergeContext.myDoc().maps, elementType, elementId) ?
-              mappedElement(mergeContext.myDoc().maps, elementType, elementId) as IParentedId: null;
-            const rightElement = hasMappedElement(mergeContext.theirDoc().maps, elementType, elementId) ?
-              mappedElement(mergeContext.theirDoc().maps, elementType, elementId) as IParentedId : null;
+        : (elementId, fromSide, mergeContext) => {
+            const leftElement = hasMappedElement(
+              mergeContext.myDoc().maps,
+              elementType,
+              elementId
+            )
+              ? (mappedElement(
+                  mergeContext.myDoc().maps,
+                  elementType,
+                  elementId
+                ) as IParentedId)
+              : null;
+            const rightElement = hasMappedElement(
+              mergeContext.theirDoc().maps,
+              elementType,
+              elementId
+            )
+              ? (mappedElement(
+                  mergeContext.theirDoc().maps,
+                  elementType,
+                  elementId
+                ) as IParentedId)
+              : null;
             if (!(leftElement && rightElement)) return true;
-            if (!isNullableId(leftElement.parentId) && !isNullableId(rightElement.parentId)) {
+            if (
+              !isNullableId(leftElement.parentId) &&
+              !isNullableId(rightElement.parentId)
+            ) {
               return true;
             }
-            if (leftElement.parentId !== rightElement.parentId || leftElement.parentType !== rightElement.parentType) {
+            if (
+              leftElement.parentId !== rightElement.parentId ||
+              leftElement.parentType !== rightElement.parentType
+            ) {
               return false;
             }
             return fromSide === ProcessingOrderFrom.both;
@@ -1308,17 +1333,6 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
 
 function getElementUid<U>(elementType: U, elemendId: Id): string {
   return `${elementType}:${elemendId}`;
-}
-
-function getTypeAndIdFromUid<U>(uid: string): {_id: Id; __typename: U} {
-  const parts = uid.split(':');
-  if (parts.length < 2) {
-    throw new TypeError('Invalid uid');
-  }
-  return {
-    _id: parts[0],
-    __typename: (parts[1] as any) as U
-  };
 }
 
 /**

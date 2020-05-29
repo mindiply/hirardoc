@@ -94,7 +94,7 @@ export function cloneNormalizedDocument<
   for (mapField in doc.maps) {
     const entityMap = doc.maps[mapField];
     if (isParentedMap(entityMap)) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       clonedMaps[mapField] = new Map(entityMap);
     }
@@ -374,7 +374,7 @@ function nextElementTypeAndId<MapsInterface, U extends keyof MapsInterface>(
         remainingPath.length >= 1 &&
         typeof remainingPath[0] === 'string' &&
         remainingPath[0] in schemaContext &&
-        remainingPath[0] in (docContext as object)
+        remainingPath[0] in (docContext as any)
       )
     ) {
       throw new Error('Expecting a field within the root document and schema');
@@ -447,14 +447,18 @@ function parentToChildTypeMappings<
 export function parentToChildFieldName<
   MapsInterface,
   U extends keyof MapsInterface
-  >(
+>(
   document:
     | INormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   parentType: U,
   childType: U
 ): AllMappedTypesFields<MapsInterface> {
-  const linkedFieldProps = parentToChildTypeMappings(document, parentType, childType);
+  const linkedFieldProps = parentToChildTypeMappings(
+    document,
+    parentType,
+    childType
+  );
   return linkedFieldProps.field;
 }
 
@@ -766,7 +770,7 @@ export function mutableDocument<
       const updatedMaps = {} as EntitiesMaps<MapsInterface, U>;
       let hasChanges = false;
       for (const mapName in this.maps) {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         updatedMaps[mapName] = this.maps[mapName].getMap();
         hasChanges = hasChanges || this.maps[mapName].hasChanged();
@@ -1094,7 +1098,9 @@ export function mappedElement<
 
 export const docReducer = <MapsInterface, U extends keyof MapsInterface>(
   doc: INormalizedDocument<MapsInterface, U>,
-  cmd: HDocOperation<MapsInterface, any, U> | Array<HDocOperation<MapsInterface, any, U>>
+  cmd:
+    | HDocOperation<MapsInterface, any, U>
+    | Array<HDocOperation<MapsInterface, any, U>>
 ): INormalizedDocument<MapsInterface, U> => {
   const cmds = Array.isArray(cmd) ? cmd : [cmd];
   if (cmds.length < 1) return doc;

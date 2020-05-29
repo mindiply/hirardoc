@@ -23,19 +23,16 @@ export function denormalizeDocument<
   const nodes: Map<string, IParentedNode> = new Map();
   // I will need two visits. One to create all the nodes while setting the parents, and
   // a second one where we change the children.
-  visitDocument(
-    doc,
-    (normalizedDoc, nodeType, nodeId) => {
-      const element = mappedElement(doc.maps, nodeType, nodeId) as IParentedId;
-      const parentUid =
-        element.parentType && element.parentId
-          ? elementUid(element.parentType, element.parentId)
-          : null;
-      const parent = parentUid ? nodes.get(parentUid) || null : null;
-      const denormalizedNode: IParentedNode = {...element, parent};
-      nodes.set(elementUid(nodeType, nodeId), denormalizedNode);
-    }
-  );
+  visitDocument(doc, (normalizedDoc, nodeType, nodeId) => {
+    const element = mappedElement(doc.maps, nodeType, nodeId) as IParentedId;
+    const parentUid =
+      element.parentType && element.parentId
+        ? elementUid(element.parentType, element.parentId)
+        : null;
+    const parent = parentUid ? nodes.get(parentUid) || null : null;
+    const denormalizedNode: IParentedNode = {...element, parent};
+    nodes.set(elementUid(nodeType, nodeId), denormalizedNode);
+  });
   visitDocument(
     doc,
     (normDoc, nodeType, nodeId) => {
