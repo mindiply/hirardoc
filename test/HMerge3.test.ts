@@ -1,7 +1,6 @@
 import {
   creationDate,
   emptyTestDocument,
-  INode,
   IRootNode,
   ITestDocElementsMap,
   removeParents

@@ -13,7 +13,8 @@ export {
   pathForElementWithId,
   isParentedMutableMap
 } from './HDocument';
-export {diff, diffInfoOf} from './HDiff';
+export {diff, diffInfoOf, diffElementInfo} from './HDiff';
 export {visitDocument} from './HVisit';
-export {threeWayMerge} from './HMerge3';
+export {threeWayMerge, mergeElementInfo} from './HMerge3';
 export {denormalizeDocument} from './HDenormalize';
+export {LazyMutableMap} from './LazyMap';

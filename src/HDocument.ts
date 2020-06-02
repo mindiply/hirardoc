@@ -18,9 +18,11 @@ import {
   INormalizedDocument,
   INormalizedMutableMapsDocument,
   IParentedId,
+  MapsOfNormDoc,
   MutableEntitiesMaps,
   Path,
-  SubEntityPathElement
+  SubEntityPathElement,
+  UOfNormDoc
 } from './HTypes';
 
 export function isId(obj: any): obj is Id {
@@ -81,16 +83,13 @@ function isSubEntityPathElement(obj: any): obj is SubEntityPathElement<any> {
  * @returns {INormalizedDocument<MapsInterface, U>} shallow clone of the document
  */
 export function cloneNormalizedDocument<
-  MapsInterface,
-  U extends keyof MapsInterface
->(
-  doc: INormalizedDocument<MapsInterface, U>
-): INormalizedDocument<MapsInterface, U> {
-  const clonedMaps: EntitiesMaps<MapsInterface, U> = {} as EntitiesMaps<
-    MapsInterface,
-    U
-  >;
-  let mapField: U;
+  NorDoc extends INormalizedDocument<any, any>
+>(doc: NorDoc): NorDoc {
+  const clonedMaps: EntitiesMaps<
+    MapsOfNormDoc<NorDoc>,
+    UOfNormDoc<NorDoc>
+  > = {} as EntitiesMaps<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
+  let mapField: UOfNormDoc<NorDoc>;
   for (mapField in doc.maps) {
     const entityMap = doc.maps[mapField];
     if (isParentedMap(entityMap)) {
@@ -113,13 +112,10 @@ export function cloneNormalizedDocument<
  */
 
 export function clearedNormalizedDocument<
-  MapsInterface,
-  U extends keyof MapsInterface
->(
-  doc: INormalizedDocument<MapsInterface, U>
-): INormalizedDocument<MapsInterface, U> {
+  NorDoc extends INormalizedDocument<any, any>
+>(doc: NorDoc): NorDoc {
   const clone = cloneNormalizedDocument(doc);
-  let mapField: U;
+  let mapField: UOfNormDoc<NorDoc>;
   for (mapField in clone.maps) {
     const entityMap = clone.maps[mapField];
     if (!isParentedMap(entityMap)) continue;
@@ -531,15 +527,14 @@ function createTypesMapForSchema<
  */
 
 export function pathForElementWithId<
-  MapsInterface,
-  U extends keyof MapsInterface
+  NorDoc extends INormalizedDocument<any, any>
 >(
   doc:
-    | INormalizedDocument<MapsInterface, U>
-    | INormalizedMutableMapsDocument<MapsInterface, U>,
-  elementTypeMap: U,
+    | INormalizedDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
+    | INormalizedMutableMapsDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
+  elementTypeMap: UOfNormDoc<NorDoc>,
   elementId: Id
-): Path<MapsInterface> {
+): Path<MapsOfNormDoc<NorDoc>> {
   if (
     !(
       elementTypeMap in doc.maps && typeof doc.maps[elementTypeMap] === 'object'
@@ -554,7 +549,7 @@ export function pathForElementWithId<
       `Referential integrity error with type ${elementTypeMap} and id ${elementId}`
     );
   }
-  const path: Path<MapsInterface> = [];
+  const path: Path<MapsOfNormDoc<NorDoc>> = [];
   if (element.parentId) {
     const parentType = parentTypeOfElement(doc, elementTypeMap, elementId);
     const parentToUsFieldLink = parentToChildTypeMappings(
@@ -595,13 +590,13 @@ export function pathForElementWithId<
   return path;
 }
 
-export function mutableDocument<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface>
->(
-  doc: INormalizedDocument<MapsInterface, U>
-): IMutableDocument<MapsInterface, U> {
-  const schema = doc.schema;
+export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
+  doc: NorDoc
+): IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, NorDoc> {
+  const schema = doc.schema as IDocumentSchema<
+    MapsOfNormDoc<NorDoc>,
+    UOfNormDoc<NorDoc>
+  >;
   const typeMap = getSchemaTypeMap(schema);
 
   /**
@@ -618,15 +613,15 @@ export function mutableDocument<
    * @private
    */
   function _removeElementFromParentContext(
-    doc: IMutableDocument<MapsInterface, U>,
-    childType: U,
+    doc: IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
+    childType: UOfNormDoc<NorDoc>,
     childId: Id
   ): void {
     const toRemoveElement = mappedElement(
       doc.maps,
       childType,
       childId
-    ) as IParentedId<U>;
+    ) as IParentedId<UOfNormDoc<NorDoc>>;
     if (toRemoveElement.parentId) {
       const parentId = toRemoveElement.parentId;
       const parentType = parentTypeOfElement(doc, childType, childId);
@@ -640,7 +635,7 @@ export function mutableDocument<
         doc.maps,
         parentType,
         parentId
-      ) as IParentedId<U> & {[field: string]: Id | Id[]};
+      ) as IParentedId<UOfNormDoc<NorDoc>> & {[field: string]: Id | Id[]};
 
       const parentChildField = parentElement[parentToElementFieldName];
       if (parentChildField && Array.isArray(parentChildField)) {
@@ -692,12 +687,12 @@ export function mutableDocument<
     T extends IParentedId,
     ParentType extends IParentedId
   >(
-    doc: IMutableDocument<MapsInterface, U>,
-    parentType: U,
+    doc: IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
+    parentType: UOfNormDoc<NorDoc>,
     parentId: Id,
-    positionInParent: SubEntityPathElement<MapsInterface>,
+    positionInParent: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
     childElement: T
-  ): U {
+  ): UOfNormDoc<NorDoc> {
     const context = mappedElement(
       doc.maps,
       parentType,
@@ -752,14 +747,21 @@ export function mutableDocument<
     return __schemaType;
   }
 
-  let lazyMaps = {} as MutableEntitiesMaps<MapsInterface, U>;
+  let lazyMaps = {} as MutableEntitiesMaps<
+    MapsOfNormDoc<NorDoc>,
+    UOfNormDoc<NorDoc>
+  >;
   for (const entityType in doc.maps) {
     lazyMaps = {
       ...lazyMaps,
       [entityType]: new LazyMutableMap(doc.maps[entityType])
     };
   }
-  const mutableDoc: IMutableDocument<MapsInterface, U> = {
+  const mutableDoc: IMutableDocument<
+    MapsOfNormDoc<NorDoc>,
+    UOfNormDoc<NorDoc>,
+    NorDoc
+  > = {
     maps: lazyMaps,
     schema,
     originalDocument: doc,
@@ -767,13 +769,18 @@ export function mutableDocument<
     rootId: doc.rootId,
     changes: [],
     updatedDocument: function () {
-      const updatedMaps = {} as EntitiesMaps<MapsInterface, U>;
+      const updatedMaps = {} as EntitiesMaps<
+        MapsOfNormDoc<NorDoc>,
+        UOfNormDoc<NorDoc>
+      >;
       let hasChanges = false;
       for (const mapName in this.maps) {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        updatedMaps[mapName] = this.maps[mapName].getMap();
-        hasChanges = hasChanges || this.maps[mapName].hasChanged();
+        // @ts-expect-error
+        updatedMaps[mapName as UOfNormDoc<NorDoc>] = this.maps[
+          mapName as UOfNormDoc<NorDoc>
+        ].getMap();
+        hasChanges =
+          hasChanges || this.maps[mapName as UOfNormDoc<NorDoc>].hasChanged();
       }
       return hasChanges
         ? {
@@ -784,8 +791,8 @@ export function mutableDocument<
     },
     applyChanges: function (
       changes:
-        | HDocOperation<MapsInterface, any, U>
-        | Array<HDocOperation<MapsInterface, any, U>>
+        | HDocOperation<MapsOfNormDoc<NorDoc>, any, UOfNormDoc<NorDoc>>
+        | Array<HDocOperation<MapsOfNormDoc<NorDoc>, any, UOfNormDoc<NorDoc>>>
     ) {
       const changesToRun = Array.isArray(changes) ? changes : [changes];
       for (const command of changesToRun) {
@@ -804,9 +811,10 @@ export function mutableDocument<
       }
     },
     insertElement: function <
-      T extends IParentedId,
-      Mandatory extends keyof T = keyof T
-    >(insertCmd: IInsertElement<T, MapsInterface, Mandatory, U>): T {
+      T extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
+    >(
+      insertCmd: IInsertElement<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, T>
+    ): T {
       const {element, parentPath, position, targetElement} = insertCmd;
       if (!isSubEntityPathElement(position)) {
         throw new Error('Incorrect position parameter');
@@ -832,9 +840,9 @@ export function mutableDocument<
         newElement
       );
       const change: HDocOperation<
-        MapsInterface,
-        AllMappedTypes<MapsInterface>,
-        U
+        MapsOfNormDoc<NorDoc>,
+        AllMappedTypes<MapsOfNormDoc<NorDoc>>,
+        UOfNormDoc<NorDoc>
       > = (targetElement
         ? insertCmd
         : {
@@ -843,7 +851,11 @@ export function mutableDocument<
               __typename: childType,
               _id: elementId
             }
-          }) as HDocOperation<MapsInterface, AllMappedTypes<MapsInterface>, U>;
+          }) as HDocOperation<
+        MapsOfNormDoc<NorDoc>,
+        AllMappedTypes<MapsOfNormDoc<NorDoc>>,
+        UOfNormDoc<NorDoc>
+      >;
       this.changes.push(change);
       return newElement;
     },
@@ -865,9 +877,9 @@ export function mutableDocument<
       this.maps[__typename].set(updatedElement._id, updatedElement);
       this.changes.push(changeCommand);
     },
-    moveElement: function <T extends IParentedId>(
-      moveCommand: IMoveElement<MapsInterface, T, U>
-    ) {
+    moveElement: function <
+      T extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
+    >(moveCommand: IMoveElement<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, T>) {
       const {
         targetElement,
         changes,
@@ -962,7 +974,7 @@ export function mutableDocument<
           `Referential integrity error with type ${elementTypeMap} and id ${elementId}`
         );
       }
-      const path: Path<MapsInterface> = [];
+      const path: Path<MapsOfNormDoc<NorDoc>> = [];
       if (element.parentId) {
         const parentType = parentTypeOfElement(this, elementTypeMap, elementId);
         const parentToUsFieldLink = parentToChildTypeMappings(
@@ -1096,12 +1108,12 @@ export function mappedElement<
   return typeMap.get(elementId)!;
 }
 
-export const docReducer = <MapsInterface, U extends keyof MapsInterface>(
-  doc: INormalizedDocument<MapsInterface, U>,
+export const docReducer = <NorDoc extends INormalizedDocument<any, any>>(
+  doc: NorDoc,
   cmd:
-    | HDocOperation<MapsInterface, any, U>
-    | Array<HDocOperation<MapsInterface, any, U>>
-): INormalizedDocument<MapsInterface, U> => {
+    | HDocOperation<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, any>
+    | Array<HDocOperation<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, any>>
+): NorDoc => {
   const cmds = Array.isArray(cmd) ? cmd : [cmd];
   if (cmds.length < 1) return doc;
   const mutableDoc = mutableDocument(doc);

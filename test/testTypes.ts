@@ -1,5 +1,11 @@
-import {Id, IDocumentSchema, INormalizedDocument, IParentedId, IParentedNode} from '../src'
-import {omit} from 'lodash'
+import {
+  Id,
+  IDocumentSchema,
+  INormalizedDocument,
+  IParentedId,
+  IParentedNode
+} from '../src';
+import {omit} from 'lodash';
 
 export interface IRootFields {
   name: string;
@@ -58,7 +64,7 @@ export const testDocSchema: IDocumentSchema<ITestDocElementsMap> = {
     }
   }
 };
-export const creationDate = new Date()
+export const creationDate = new Date();
 export const emptyTestDocument = (): TestNormalizeDocument => ({
   maps: {
     Root: new Map([
@@ -80,18 +86,18 @@ export const emptyTestDocument = (): TestNormalizeDocument => ({
   rootType: 'Root',
   rootId: 1,
   schema: testDocSchema
-})
+});
 
 function removeNodeParent(node: INodeNode) {
-  delete node.parent
+  delete node.parent;
   for (const child of node.children) {
-    removeNodeParent(child)
+    removeNodeParent(child);
   }
 }
 
 export function removeParents(root: IRootNode) {
   for (const node of root.children) {
-    removeNodeParent(node)
+    removeNodeParent(node);
   }
-  return omit(root, 'parent')
+  return omit(root, 'parent');
 }

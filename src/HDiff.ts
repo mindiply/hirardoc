@@ -13,7 +13,9 @@ import {
   INormalizedDocument,
   INormalizedMutableMapsDocument,
   IParentedId,
-  MappedParentedTypesFields
+  MappedParentedTypesFields,
+  MapsOfNormDoc,
+  UOfNormDoc
 } from './HTypes';
 import {
   hasMappedElement,
@@ -35,10 +37,10 @@ import {visitDocument} from './HVisit';
  * @param {INormalizedDocument<MapsInterface, U>} laterDoc
  * @returns {HDocOperation<MapsInterface, any, U>[]}
  */
-export function diff<MapsInterface, U extends keyof MapsInterface>(
-  baseDoc: INormalizedDocument<MapsInterface, U>,
-  laterDoc: INormalizedDocument<MapsInterface, U>
-): HDocOperation<MapsInterface, any, U>[] {
+export function diff<NorDoc extends INormalizedDocument<any, any>>(
+  baseDoc: NorDoc,
+  laterDoc: NorDoc
+): HDocOperation<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, any>[] {
   /**
    * We visit laterDoc breadth first, and for each element visited
    * we ensure that the info is up to date and that the children
@@ -62,7 +64,7 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
     return [];
   }
   const mutableDoc = mutableDocument(baseDoc);
-  visitDocument<MapsInterface, U>(
+  visitDocument(
     laterDoc,
     (doc, nodeType, nodeId) => {
       const destElement = mappedElement(laterDoc.maps, nodeType, nodeId);
@@ -75,12 +77,16 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
       // updated
       const nodePath = pathForElementWithId(mutableDoc, nodeType, nodeId);
       if (hasMappedElement(baseDoc.maps, nodeType, nodeId)) {
-        const infoChanges = diffInfoOf(mutableDoc, laterDoc, nodeType, nodeId);
+        const infoChanges = diffInfoOf<
+          MapsOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>,
+          MappedParentedTypesFields<MappedParentedTypesFields<NorDoc>>
+        >(mutableDoc, laterDoc, nodeType, nodeId);
         if (Object.keys(infoChanges).length > 0) {
           const changeElementCmd: IChangeElement<
-            MapsInterface,
-            IParentedId,
-            U
+            MapsOfNormDoc<NorDoc>,
+            UOfNormDoc<NorDoc>,
+            IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
           > = {
             __typename: HDocCommandType.CHANGE_ELEMENT,
             targetElement: {
@@ -99,8 +105,8 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
       for (const linkFieldName in schema.types[nodeType]) {
         if (linkFieldName === 'parentId') continue;
         const fieldLink = schema.types[nodeType][linkFieldName] as
-          | IFieldEntityReference<U>
-          | [IFieldEntityReference<U>];
+          | IFieldEntityReference<UOfNormDoc<NorDoc>>
+          | [IFieldEntityReference<UOfNormDoc<NorDoc>>];
         if (Array.isArray(fieldLink)) {
           const {__schemaType: childType} = fieldLink[0];
           const destChildrenIds: Id[] = (destElement as any)[linkFieldName];
@@ -137,9 +143,9 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
                   destChildId
                 );
                 const moveChildCmd: IMoveElement<
-                  MapsInterface,
-                  IParentedId,
-                  U
+                  MapsOfNormDoc<NorDoc>,
+                  UOfNormDoc<NorDoc>,
+                  IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
                 > = {
                   __typename: HDocCommandType.MOVE_ELEMENT,
                   targetElement: {
@@ -158,7 +164,7 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
                   ),
                   toPosition: [
                     (linkFieldName as any) as AllMappedTypesFields<
-                      MapsInterface
+                      MapsOfNormDoc<NorDoc>
                     >,
                     i
                   ],
@@ -186,16 +192,15 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
                     : null;
                 }
                 const addChildCmd: IInsertElement<
-                  IParentedId,
-                  MapsInterface,
-                  keyof IParentedId,
-                  U
+                  MapsOfNormDoc<NorDoc>,
+                  UOfNormDoc<NorDoc>,
+                  IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
                 > = {
                   __typename: HDocCommandType.INSERT_ELEMENT,
                   parentPath: nodePath,
                   position: [
                     (linkFieldName as any) as AllMappedTypesFields<
-                      MapsInterface
+                      MapsOfNormDoc<NorDoc>
                     >,
                     i
                   ],
@@ -215,9 +220,9 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
             (mutableElement as any)[linkFieldName]
           ) {
             const changeLinkFieldCmd: IChangeElement<
-              MapsInterface,
-              IParentedId,
-              U
+              MapsOfNormDoc<NorDoc>,
+              UOfNormDoc<NorDoc>,
+              IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
             > = {
               __typename: HDocCommandType.CHANGE_ELEMENT,
               path: pathForElementWithId(mutableDoc, nodeType, nodeId),
@@ -245,7 +250,10 @@ export function diff<MapsInterface, U extends keyof MapsInterface>(
     mutableDoc,
     (doc, nodeType, nodeId) => {
       if (!hasMappedElement(laterDoc.maps, nodeType, nodeId)) {
-        const deleteElementCmd: IDeleteElement<MapsInterface, U> = {
+        const deleteElementCmd: IDeleteElement<
+          MapsOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>
+        > = {
           __typename: HDocCommandType.DELETE_ELEMENT,
           path: pathForElementWithId(doc, nodeType, nodeId),
           targetElement: {

@@ -1,4 +1,11 @@
-import {creationDate, emptyTestDocument, INode, IRootNode, ITestDocElementsMap, removeParents} from './testTypes'
+import {
+  creationDate,
+  emptyTestDocument,
+  INode,
+  IRootNode,
+  ITestDocElementsMap,
+  removeParents
+} from './testTypes';
 import {
   denormalizeDocument,
   hasMappedElement,
@@ -9,7 +16,7 @@ import {
   IMoveElement,
   isParentedMutableMap,
   mutableDocument
-} from '../src'
+} from '../src';
 
 describe('Test the basic operations', () => {
   test('The empty document', () => {
@@ -44,7 +51,11 @@ describe('Test the basic operations', () => {
       ],
       parent: null
     });
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -82,7 +93,11 @@ describe('Test the basic operations', () => {
       children: [],
       parent: null
     });
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -144,7 +159,11 @@ describe('Test the basic operations', () => {
       parent: null
     });
     const mutableDoc = mutableDocument(emptyDoc);
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -157,7 +176,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: ['children', 0],
@@ -221,7 +244,11 @@ describe('Test the basic operations', () => {
       parent: null
     });
     const mutableDoc = mutableDocument(emptyDoc);
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -234,7 +261,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 1],
       parentPath: [],
@@ -247,7 +278,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
-    const addNodeCmd3: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd3: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: ['children', 0],
@@ -260,7 +295,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd3);
-    const moveNode3Cmd: IMoveElement<ITestDocElementsMap, INode> = {
+    const moveNode3Cmd: IMoveElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.MOVE_ELEMENT,
       fromPath: ['children', 0, 'children', 0],
       toParentPath: ['children', 1],
@@ -314,7 +353,11 @@ describe('Test the basic operations', () => {
       parent: null
     });
     const mutableDoc = mutableDocument(emptyDoc);
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -327,7 +370,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: ['children', 0],
@@ -340,7 +387,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
-    const updateCmd: IChangeElement<ITestDocElementsMap, INode> = {
+    const updateCmd: IChangeElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.CHANGE_ELEMENT,
       path: ['children', 0],
       changes: {
@@ -384,7 +435,11 @@ describe('Test the basic operations', () => {
       parent: null
     });
     const mutableDoc = mutableDocument(emptyDoc);
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -397,7 +452,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: ['children', 0],
@@ -410,7 +469,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
-    const updateCmd: IChangeElement<ITestDocElementsMap, INode> = {
+    const updateCmd: IChangeElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.CHANGE_ELEMENT,
       path: ['children', 0],
       changes: {
@@ -435,34 +498,12 @@ describe('Test the basic operations', () => {
 
   test('Added node, its child and modified parent - test the paths', () => {
     const emptyDoc = emptyTestDocument();
-    const expectedRootNode = removeParents({
-      __typename: 'Root',
-      _id: 1,
-      createdAt: creationDate,
-      name: 'root',
-      children: [
-        {
-          __typename: 'Node',
-          _id: 'Node1',
-          children: [
-            {
-              __typename: 'Node',
-              text: 'secondNode',
-              isChecked: true,
-              children: [],
-              _id: 'Node2',
-              parent: null
-            }
-          ],
-          parent: null,
-          isChecked: true,
-          text: 'firstNode'
-        }
-      ],
-      parent: null
-    });
     const mutableDoc = mutableDocument(emptyDoc);
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -475,7 +516,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: ['children', 0],
@@ -488,14 +533,6 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
-    const updateCmd: IChangeElement<ITestDocElementsMap, INode> = {
-      __typename: HDocCommandType.CHANGE_ELEMENT,
-      path: ['children', 0],
-      changes: {
-        __typename: 'Node',
-        isChecked: true
-      }
-    };
     expect(mutableDoc.pathForElementWithId('Root', 1)).toEqual([]);
     expect(mutableDoc.pathForElementWithId('Node', 'Node1')).toEqual([
       'children',
@@ -511,34 +548,12 @@ describe('Test the basic operations', () => {
 
   test('Added node, its child and modified parent - hasMappedElement', () => {
     const emptyDoc = emptyTestDocument();
-    const expectedRootNode = removeParents({
-      __typename: 'Root',
-      _id: 1,
-      createdAt: creationDate,
-      name: 'root',
-      children: [
-        {
-          __typename: 'Node',
-          _id: 'Node1',
-          children: [
-            {
-              __typename: 'Node',
-              text: 'secondNode',
-              isChecked: true,
-              children: [],
-              _id: 'Node2',
-              parent: null
-            }
-          ],
-          parent: null,
-          isChecked: true,
-          text: 'firstNode'
-        }
-      ],
-      parent: null
-    });
     const mutableDoc = mutableDocument(emptyDoc);
-    const addNodeCmd: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: [],
@@ -551,7 +566,11 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: IInsertElement<INode, ITestDocElementsMap> = {
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
       parentPath: ['children', 0],
@@ -564,14 +583,6 @@ describe('Test the basic operations', () => {
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
-    const updateCmd: IChangeElement<ITestDocElementsMap, INode> = {
-      __typename: HDocCommandType.CHANGE_ELEMENT,
-      path: ['children', 0],
-      changes: {
-        __typename: 'Node',
-        isChecked: true
-      }
-    };
     const modifiedDoc = mutableDoc.updatedDocument();
     // @ts-expect-error
     expect(hasMappedElement(mutableDoc.maps, false, {})).toBe(false);

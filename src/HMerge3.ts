@@ -34,6 +34,8 @@ import {
   IInsertElement,
   IMergeElementOverrides,
   IMergeElementsState,
+  IMergeHooks,
+  IMergeOptions,
   IMoveElement,
   IMutableDocument,
   INormalizedDocument,
@@ -41,11 +43,12 @@ import {
   IParentedId,
   IProcessingOrderElement,
   IValueConflict,
-  MergeOverrides,
+  MapsOfNormDoc,
   MergeStatus,
   Path,
   ProcessingOrderFrom,
-  SubEntityPathElement
+  SubEntityPathElement,
+  UOfNormDoc
 } from './HTypes';
 import {visitDocument} from './HVisit';
 import {diff, diffElementInfo} from './HDiff';
@@ -152,7 +155,361 @@ interface IMergedElementInfoResult<
   conflicts?: ElementInfoConflicts<ElementType>;
 }
 
-function mergeElementInfo<
+type NDoc = INormalizedDocument<any, any>;
+
+const defaultHooks: IMergeHooks<NDoc> = {
+  onIncompatibleElementVersions: (
+    elementType,
+    elementId,
+    parentPath,
+    position,
+    versionMoved,
+    mergeCtx
+  ) => {
+    const {newElementId} = reIdElementSubtree(
+      mergeCtx,
+      versionMoved === ProcessingOrderFrom.left
+        ? ProcessingOrderFrom.right
+        : ProcessingOrderFrom.left,
+      elementType,
+      elementId
+    );
+    const cloneId = newElementId;
+    const elementConflicts =
+      mergeCtx.conflicts[elementType].get(elementId) || {};
+    elementConflicts.positionConflicts = {
+      clonedElements: [cloneId],
+      mergeStatus: MergeStatus.autoMerged
+    };
+    mergeCtx.conflicts[elementType].set(elementId, elementConflicts);
+    let currentId: Id | null = null;
+    let currentType: UOfNormDoc<NDoc> | null = null;
+    try {
+      const {_id, __typename} = idAndTypeForPath(
+        mergeCtx.mergedDoc,
+        parentPath.concat(position)
+      );
+      currentId = _id;
+      currentType = __typename;
+    } catch (err) {
+      // it's possible there is no node at the path, in which case
+      // let's swallow the integrity exception
+    }
+    if (currentType !== elementType || currentId !== elementId) {
+      const moveElementCmd: IMoveElement<
+        MapsOfNormDoc<NDoc>,
+        UOfNormDoc<NDoc>,
+        IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>
+      > = {
+        __typename: HDocCommandType.MOVE_ELEMENT,
+        fromPath: pathForElementWithId(
+          mergeCtx.mergedDoc,
+          elementType,
+          elementId
+        ),
+        toParentPath: parentPath,
+        toPosition: position,
+        changes: {
+          __typename: elementType
+        },
+        targetElement: {
+          __typename: elementType,
+          _id: elementId
+        }
+      };
+      mergeCtx.mergedDoc.moveElement(moveElementCmd);
+    }
+    if (versionMoved === ProcessingOrderFrom.left) {
+      mergeCtx.myElementsMergeState.set(
+        getElementUid(elementType, cloneId),
+        mergeCtx.myElementsMergeState.get(
+          getElementUid(elementType, elementId)
+        )!
+      );
+    } else {
+      mergeCtx.theirElementsMergeState.set(
+        getElementUid(elementType, cloneId),
+        mergeCtx.theirElementsMergeState.get(
+          getElementUid(elementType, elementId)
+        )!
+      );
+    }
+    return {
+      advancedMergingIndex: true,
+      rebasedIds: [
+        {
+          rebasedSide:
+            versionMoved === ProcessingOrderFrom.left
+              ? ProcessingOrderFrom.right
+              : ProcessingOrderFrom.left,
+          _id: elementId,
+          newId: cloneId
+        }
+      ]
+    };
+  },
+  moveToMergePosition: (
+    elementType,
+    elementId,
+    toParentPath,
+    toPosition,
+    mergeContext
+  ) => {
+    const moveCmd: IMoveElement<
+      MapsOfNormDoc<NDoc>,
+      UOfNormDoc<NDoc>,
+      IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>
+    > = {
+      __typename: HDocCommandType.MOVE_ELEMENT,
+      fromPath: pathForElementWithId(
+        mergeContext.mergedDoc,
+        elementType,
+        elementId
+      ),
+      toParentPath,
+      toPosition,
+      targetElement: {
+        __typename: elementType,
+        _id: elementId
+      }
+    };
+    mergeContext.mergedDoc.moveElement(moveCmd);
+  },
+  mergeElementInfo: <
+    T extends IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>,
+    K extends keyof T = keyof T
+  >(
+    mergeContext: II3WMergeContext<NDoc>,
+    elementType: UOfNormDoc<NDoc>,
+    base: T | null,
+    a: T | null,
+    b: T | null,
+    ignoreFields?: K[]
+  ) => {
+    let elementInfoDiff: Partial<T> | null = null;
+
+    if (a && b && base) {
+      const mergeElement = mappedElement(
+        mergeContext.mergedDoc.maps,
+        elementType,
+        base._id
+      ) as T;
+      const mergeRes = mergeElementInfo(
+        mergeContext.mergedDoc.schema,
+        elementType,
+        base,
+        a,
+        b,
+        ignoreFields
+      );
+      if (mergeRes.conflicts) {
+        const elementConflicts: IElementConflicts<
+          MapsOfNormDoc<NDoc>,
+          MapsOfNormDoc<NDoc>[typeof elementType]
+        > = mergeContext.conflicts[elementType].get(base._id) || {};
+        mergeContext.conflicts[elementType].set(base._id, {
+          ...elementConflicts,
+          infoConflicts: mergeRes.conflicts as MapsOfNormDoc<
+            NDoc
+          >[typeof elementType]
+        });
+      }
+      elementInfoDiff = diffElementInfo(
+        mergeContext.mergedDoc.schema,
+        elementType,
+        mergeElement,
+        mergeRes.mergedElement
+      );
+    } else if (base && (a || b)) {
+      const mergeElement = mappedElement(
+        mergeContext.mergedDoc.maps,
+        elementType,
+        base._id
+      ) as T;
+      const laterEl = a ? a : b;
+      elementInfoDiff = diffElementInfo(
+        mergeContext.mergedDoc.schema,
+        elementType,
+        mergeElement,
+        laterEl!
+      );
+    }
+    if (elementInfoDiff && Object.keys(elementInfoDiff).length > 0) {
+      const changeCmd: IChangeElement<
+        MapsOfNormDoc<NDoc>,
+        UOfNormDoc<NDoc>,
+        T
+      > = {
+        __typename: HDocCommandType.CHANGE_ELEMENT,
+        path: pathForElementWithId(
+          mergeContext.mergedDoc,
+          elementType,
+          (base as IParentedId)._id
+        ),
+        changes: {
+          ...elementInfoDiff,
+          __typename: elementType as UOfNormDoc<NDoc>
+        },
+        targetElement: {
+          __typename: elementType,
+          _id: (base as IParentedId)._id
+        }
+      };
+      mergeContext.mergedDoc.changeElement(changeCmd);
+    }
+  },
+  onDeleteElement: (elementType, elementId, mergeContext) => {
+    const deleteCmd: IDeleteElement<MapsOfNormDoc<NDoc>, UOfNormDoc<NDoc>> = {
+      __typename: HDocCommandType.DELETE_ELEMENT,
+      path: pathForElementWithId(
+        mergeContext.mergedDoc,
+        elementType,
+        elementId
+      ),
+      targetElement: {
+        __typename: elementType,
+        _id: elementId
+      }
+    };
+    mergeContext.mergedDoc.deleteElement(deleteCmd);
+  },
+  cmpSiblings: (elementType, base, a, b) => {
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    if (a._id === b._id) return 0;
+
+    if (base && a._id === base._id) return 1;
+    if (base && b._id === base._id) return -1;
+    return (a._id || 0) < (b._id || 0)
+      ? -1
+      : (a._id || 0) > (b._id || 0)
+      ? 1
+      : 0;
+  },
+  arePositionsCompatible: (elementType, elementId, fromSide, mergeContext) => {
+    const leftElement = hasMappedElement(
+      mergeContext.myDoc().maps,
+      elementType,
+      elementId
+    )
+      ? (mappedElement(
+          mergeContext.myDoc().maps,
+          elementType,
+          elementId
+        ) as IParentedId)
+      : null;
+    const rightElement = hasMappedElement(
+      mergeContext.theirDoc().maps,
+      elementType,
+      elementId
+    )
+      ? (mappedElement(
+          mergeContext.theirDoc().maps,
+          elementType,
+          elementId
+        ) as IParentedId)
+      : null;
+    if (!(leftElement && rightElement)) return true;
+    if (
+      !isNullableId(leftElement.parentId) &&
+      !isNullableId(rightElement.parentId)
+    ) {
+      return true;
+    }
+    if (
+      leftElement.parentId !== rightElement.parentId ||
+      leftElement.parentType !== rightElement.parentType
+    ) {
+      return false;
+    }
+    return fromSide === ProcessingOrderFrom.both;
+  },
+  addElement: <
+    ElementType extends IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>
+  >(
+    elementType: UOfNormDoc<NDoc>,
+    element: ElementType,
+    parentPath: Path<MapsOfNormDoc<NDoc>>,
+    position: SubEntityPathElement<MapsOfNormDoc<NDoc>>,
+    mergeContext: II3WMergeContext<NDoc>
+  ): ElementType => {
+    const insertCmd: IInsertElement<
+      MapsOfNormDoc<NDoc>,
+      UOfNormDoc<NDoc>,
+      ElementType
+    > = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      element: stripChildrenFromElement(
+        mergeContext.mergedDoc.schema,
+        elementType,
+        element
+      ),
+      parentPath,
+      position,
+      targetElement: element._id
+        ? {
+            __typename: elementType,
+            _id: element._id
+          }
+        : undefined
+    };
+    return mergeContext.mergedDoc.insertElement(insertCmd);
+  }
+};
+
+/**
+ * Given a base version of a normalized document, and
+ * two later versions of the document, generates a merge
+ * tree reporting back if there were conflicts and a diff
+ * object to go from myDoc to theirDoc.
+ *
+ * @param {INormalizedDocument<MapsInterface, U>} baseDoc
+ * @param {INormalizedDocument<MapsInterface, U>} myDoc
+ * @param {INormalizedDocument<MapsInterface, U>} theirDoc
+ * @param {MergeOverridesMap<MapsInterface, U, ElementType>} options
+ * @returns {II3MergeResult<MapsInterface, U>}
+ */
+export function threeWayMerge<
+  NorDoc extends INormalizedDocument<any, any>,
+  ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
+>(
+  baseDoc: NorDoc,
+  myDoc: NorDoc,
+  theirDoc: NorDoc,
+  options?: IMergeOptions<NorDoc>
+): II3MergeResult<NorDoc> {
+  const mergedDoc =
+    options && options.onCreateMutableDocument
+      ? options.onCreateMutableDocument(myDoc)
+      : mutableDocument(myDoc);
+  const mergeContext: II3WMergeContext<NorDoc> = {
+    mergedDoc,
+    myElementsMergeState: buildMergeElementsState(baseDoc, myDoc),
+    theirElementsMergeState: buildMergeElementsState(baseDoc, theirDoc),
+    baseDoc,
+    myDoc: createGetterSetter(myDoc),
+    theirDoc: createGetterSetter(theirDoc),
+    elementsToDelete: [],
+    conflicts: {} as ConflictsMap<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
+    overrides:
+      options && options.elementsOverrides ? options.elementsOverrides : {},
+    defaultHooks: (defaultHooks as any) as IMergeHooks<NorDoc>
+  };
+  for (const elementType in baseDoc.maps) {
+    // ToDo resolve this type error
+    // @ts-expect-error
+    mergeContext.conflicts[elementType as U] = new Map();
+  }
+  buildMergedTree(mergeContext);
+  const updatedDoc = mergedDoc.updatedDocument();
+  return {
+    mergedDoc: updatedDoc,
+    conflicts: mergeContext.conflicts
+  };
+}
+
+export function mergeElementInfo<
   MapsInterface,
   U extends keyof MapsInterface,
   ElementType extends IParentedId<U, U>,
@@ -202,53 +559,6 @@ function mergeElementInfo<
     : mergeResult;
 }
 
-/**
- * Given a base version of a normalized document, and
- * two later versions of the document, generates a merge
- * tree reporting back if there were conflicts and a diff
- * object to go from myDoc to theirDoc.
- *
- * @param {INormalizedDocument<MapsInterface, U>} baseDoc
- * @param {INormalizedDocument<MapsInterface, U>} myDoc
- * @param {INormalizedDocument<MapsInterface, U>} theirDoc
- * @param {MergeOverrides<MapsInterface, U, ElementType>} options
- * @returns {II3MergeResult<MapsInterface, U>}
- */
-export function threeWayMerge<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  ElementType extends IParentedId<U, U>
->(
-  baseDoc: INormalizedDocument<MapsInterface, U>,
-  myDoc: INormalizedDocument<MapsInterface, U>,
-  theirDoc: INormalizedDocument<MapsInterface, U>,
-  options?: MergeOverrides<MapsInterface, U, ElementType>
-): II3MergeResult<MapsInterface, U> {
-  const mergedDoc = mutableDocument(myDoc);
-  const mergeContext: II3WMergeContext<MapsInterface, U> = {
-    mergedDoc,
-    myElementsMergeState: buildMergeElementsState(baseDoc, myDoc),
-    theirElementsMergeState: buildMergeElementsState(baseDoc, theirDoc),
-    baseDoc,
-    myDoc: createGetterSetter(myDoc),
-    theirDoc: createGetterSetter(theirDoc),
-    elementsToDelete: [],
-    conflicts: {} as ConflictsMap<MapsInterface, U>,
-    overrides: options
-  };
-  for (const elementType in baseDoc.maps) {
-    // ToDo resolve this type error
-    // @ts-expect-error
-    mergeContext.conflicts[elementType as U] = new Map();
-  }
-  buildMergedTree(mergeContext);
-  const updatedDoc = mergedDoc.updatedDocument();
-  return {
-    mergedDoc: updatedDoc,
-    conflicts: mergeContext.conflicts
-  };
-}
-
 const getElementTypeUid = <MapsInterface, U extends keyof MapsInterface>(
   doc:
     | INormalizedDocument<MapsInterface, U>
@@ -258,7 +568,7 @@ const getElementTypeUid = <MapsInterface, U extends keyof MapsInterface>(
 
 const elementTypesOverridesMap: Map<
   string,
-  IMergeElementOverrides<any, any, any>
+  IMergeElementOverrides<any, any>
 > = new Map();
 
 function createGetterSetter<T>(value: T): IGetterSetter<T> {
@@ -284,12 +594,12 @@ function createGetterSetter<T>(value: T): IGetterSetter<T> {
  * @param {Id} elementId
  * @returns {IMutableDocument<MapsInterface, U>}
  */
-function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
-  context: II3WMergeContext<MapsInterface, U>,
+function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
+  context: II3WMergeContext<NorDoc>,
   treeToRebase: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
-  elementType: U,
+  elementType: UOfNormDoc<NorDoc>,
   elementId: Id
-): {doc: INormalizedDocument<MapsInterface, U>; newElementId: Id} {
+): {doc: NorDoc; newElementId: Id} {
   const document =
     treeToRebase === ProcessingOrderFrom.left
       ? context.myDoc()
@@ -358,10 +668,9 @@ function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
         oldIndex
       ] = rebasedRootId;
     }
-    (changedDocument.maps[rebasingRootElement.parentType as U] as Map<
-      Id,
-      IParentedId
-    >).set(rebasingRootElement.parentId, newParent);
+    (changedDocument.maps[
+      rebasingRootElement.parentType as UOfNormDoc<NorDoc>
+    ] as Map<Id, IParentedId>).set(rebasingRootElement.parentId, newParent);
   } else {
     changedDocument.rootId = rebasedRootId;
   }
@@ -401,7 +710,9 @@ function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
             existingId => newIds.get(getElementUid(__schemaType, existingId))!
           );
         } else {
-          const {__schemaType} = linkFieldProps as IFieldEntityReference<U>;
+          const {__schemaType} = linkFieldProps as IFieldEntityReference<
+            UOfNormDoc<NorDoc>
+          >;
           (reIdedElement as any)[linkField] = newIds.get(
             getElementUid(__schemaType, (reIdedElement as any)[linkField] as Id)
           )!;
@@ -434,314 +745,106 @@ function reIdElementSubtree<MapsInterface, U extends keyof MapsInterface>(
  * @returns {IMergeElementOverrides<MapsInterface, U, MapsInterface[typeof elementType]>}
  */
 function fnsForElementType<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  ElementType extends IParentedId<U, U>
+  NorDoc extends INormalizedDocument<any, any>,
+  ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
 >(
-  context: II3WMergeContext<MapsInterface, U>,
-  elementType: U
-): IMergeElementOverrides<MapsInterface, U, ElementType> {
+  context: II3WMergeContext<NorDoc>,
+  elementType: UOfNormDoc<NorDoc>
+): IMergeElementOverrides<ElementType, NorDoc> {
   const typeUid = getElementTypeUid(context.myDoc(), elementType);
   let overridableFunctions:
     | undefined
     | IMergeElementOverrides<
-        MapsInterface,
-        U,
-        ElementType
+        ElementType,
+        NorDoc
       > = elementTypesOverridesMap.get(typeUid);
   if (!overridableFunctions) {
     const {overrides} = context;
     const elementOverrides =
       overrides && elementType in overrides
         ? overrides[elementType]!
-        : ({} as IMergeElementOverrides<MapsInterface, U, any>);
+        : ({} as IMergeElementOverrides<any, NorDoc>);
     overridableFunctions = {
       onIncompatibleElementVersions: elementOverrides.onIncompatibleElementVersions
         ? elementOverrides.onIncompatibleElementVersions
-        : (
-            elementId: Id,
-            parentPath: Path<MapsInterface>,
-            position: SubEntityPathElement<MapsInterface>,
-            versionMoved: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
-            mergeCtx: II3WMergeContext<MapsInterface, U>
-          ) => {
-            const {newElementId} = reIdElementSubtree(
-              mergeCtx,
-              versionMoved === ProcessingOrderFrom.left
-                ? ProcessingOrderFrom.right
-                : ProcessingOrderFrom.left,
+        : (elementId, parentPath, position, versionMoved, mergeContext) =>
+            context.defaultHooks.onIncompatibleElementVersions(
               elementType,
-              elementId
-            );
-            const cloneId = newElementId;
-            const elementConflicts =
-              mergeCtx.conflicts[elementType].get(elementId) || {};
-            elementConflicts.positionConflicts = {
-              clonedElements: [cloneId],
-              mergeStatus: MergeStatus.autoMerged
-            };
-            mergeCtx.conflicts[elementType].set(elementId, elementConflicts);
-            let currentId: Id | null = null;
-            let currentType: U | null = null;
-            try {
-              const {_id, __typename} = idAndTypeForPath(
-                mergeCtx.mergedDoc,
-                parentPath.concat(position)
-              );
-              currentId = _id;
-              currentType = __typename;
-            } catch (err) {
-              // it's possible there is no node at the path, in which case
-              // let's swallow the integrity exception
-            }
-            if (currentType !== elementType || currentId !== elementId) {
-              const moveElementCmd: IMoveElement<
-                MapsInterface,
-                IParentedId,
-                U
-              > = {
-                __typename: HDocCommandType.MOVE_ELEMENT,
-                fromPath: pathForElementWithId(
-                  mergeCtx.mergedDoc,
-                  elementType,
-                  elementId
-                ),
-                toParentPath: parentPath,
-                toPosition: position,
-                changes: {
-                  __typename: elementType
-                },
-                targetElement: {
-                  __typename: elementType,
-                  _id: elementId
-                }
-              };
-              mergeCtx.mergedDoc.moveElement(moveElementCmd);
-            }
-            if (versionMoved === ProcessingOrderFrom.left) {
-              mergeCtx.myElementsMergeState.set(
-                getElementUid(elementType, cloneId),
-                mergeCtx.myElementsMergeState.get(
-                  getElementUid(elementType, elementId)
-                )!
-              );
-            } else {
-              mergeCtx.theirElementsMergeState.set(
-                getElementUid(elementType, cloneId),
-                mergeCtx.theirElementsMergeState.get(
-                  getElementUid(elementType, elementId)
-                )!
-              );
-            }
-            return {
-              advancedMergingIndex: true,
-              rebasedIds: [
-                {
-                  rebasedSide:
-                    versionMoved === ProcessingOrderFrom.left
-                      ? ProcessingOrderFrom.right
-                      : ProcessingOrderFrom.left,
-                  _id: elementId,
-                  newId: cloneId
-                }
-              ]
-            };
-          },
+              elementId,
+              parentPath,
+              position,
+              versionMoved,
+              mergeContext
+            ),
       moveToMergePosition: elementOverrides.moveToMergePosition
         ? elementOverrides.moveToMergePosition
-        : (
-            elementId: Id,
-            toParentPath: Path<MapsInterface>,
-            toPosition: SubEntityPathElement<MapsInterface>,
-            mergeContext: II3WMergeContext<MapsInterface, U>
-          ) => {
-            const moveCmd: IMoveElement<MapsInterface, IParentedId, U> = {
-              __typename: HDocCommandType.MOVE_ELEMENT,
-              fromPath: pathForElementWithId(
-                mergeContext.mergedDoc,
-                elementType,
-                elementId
-              ),
+        : (elementId, toParentPath, toPosition, mergeContext) =>
+            context.defaultHooks.moveToMergePosition(
+              elementType,
+              elementId,
               toParentPath,
               toPosition,
-              targetElement: {
-                __typename: elementType,
-                _id: elementId
-              }
-            };
-            mergeContext.mergedDoc.moveElement(moveCmd);
-          },
+              mergeContext
+            ),
       mergeElementInfo: elementOverrides.mergeElementInfo
         ? elementOverrides.mergeElementInfo
-        : <ElementType extends IParentedId<U, U>>(
+        : <
+            ElementType extends IParentedId<
+              UOfNormDoc<NorDoc>,
+              UOfNormDoc<NorDoc>
+            >,
+            K extends keyof ElementType = keyof ElementType
+          >(
             base: ElementType | null,
             a: ElementType | null,
             b: ElementType | null,
-            mergeContext: II3WMergeContext<MapsInterface, U>
-          ) => {
-            let elementInfoDiff: Partial<ElementType> | null = null;
-            if (a && b && base) {
-              const mergeRes = mergeElementInfo<MapsInterface, U, ElementType>(
-                mergeContext.mergedDoc.schema,
-                elementType,
-                base,
-                a,
-                b
-              );
-              if (mergeRes.conflicts) {
-                const elementConflicts: IElementConflicts<
-                  MapsInterface,
-                  MapsInterface[typeof elementType]
-                > = mergeContext.conflicts[elementType].get(base._id) || {};
-                mergeContext.conflicts[elementType].set(base._id, {
-                  ...elementConflicts,
-                  infoConflicts: mergeRes.conflicts as MapsInterface[typeof elementType]
-                });
-              }
-              elementInfoDiff = diffElementInfo(
-                mergeContext.mergedDoc.schema,
-                elementType,
-                base,
-                mergeRes.mergedElement
-              );
-            } else if (base && (a || b)) {
-              const laterEl = (a ? a : b) as ElementType;
-              elementInfoDiff = diffElementInfo(
-                mergeContext.mergedDoc.schema,
-                elementType,
-                base,
-                laterEl
-              );
-            }
-            if (elementInfoDiff && Object.keys(elementInfoDiff).length > 0) {
-              const changeCmd: IChangeElement<MapsInterface, ElementType, U> = {
-                __typename: HDocCommandType.CHANGE_ELEMENT,
-                path: pathForElementWithId(
-                  mergeContext.mergedDoc,
-                  elementType,
-                  (base as IParentedId)._id
-                ),
-                changes: {
-                  ...elementInfoDiff,
-                  __typename: elementType as U
-                },
-                targetElement: {
-                  __typename: elementType,
-                  _id: (base as IParentedId)._id
-                }
-              };
-              mergeContext.mergedDoc.changeElement(changeCmd);
-            }
-          },
+            mergeContext: II3WMergeContext<NorDoc>,
+            ignoreFields?: K[]
+          ) =>
+            context.defaultHooks.mergeElementInfo(
+              mergeContext,
+              elementType,
+              base,
+              a,
+              b,
+              ignoreFields
+            ),
       onDeleteElement: elementOverrides.onDeleteElement
         ? elementOverrides.onDeleteElement
-        : (elementId: Id, mergeContext: II3WMergeContext<MapsInterface, U>) => {
-            const deleteCmd: IDeleteElement<MapsInterface, U> = {
-              __typename: HDocCommandType.DELETE_ELEMENT,
-              path: pathForElementWithId(
-                mergeContext.mergedDoc,
-                elementType,
-                elementId
-              ),
-              targetElement: {
-                __typename: elementType,
-                _id: elementId
-              }
-            };
-            mergeContext.mergedDoc.deleteElement(deleteCmd);
-          },
+        : (elementId, mergeContext) =>
+            context.defaultHooks.onDeleteElement(
+              elementType,
+              elementId,
+              mergeContext
+            ),
       cmpSiblings: elementOverrides.cmpSiblings
         ? elementOverrides.cmpSiblings
-        : <ElementType extends IParentedId>(
-            base: ElementType | null,
-            a: ElementType | null,
-            b: ElementType | null
-          ): number => {
-            if (a === null && b === null) return 0;
-            if (a === null) return 1;
-            if (b === null) return -1;
-            if (a._id === b._id) return 0;
-
-            if (base && a._id === base._id) return 1;
-            if (base && b._id === base._id) return -1;
-            return (a._id || 0) < (b._id || 0)
-              ? -1
-              : (a._id || 0) > (b._id || 0)
-              ? 1
-              : 0;
-          },
+        : (base, a, b, mergeCtx) =>
+            context.defaultHooks.cmpSiblings(elementType, base, a, b, mergeCtx),
       arePositionsCompatible: elementOverrides.arePositionsCompatible
         ? elementOverrides.arePositionsCompatible
-        : (elementId, fromSide, mergeContext) => {
-            const leftElement = hasMappedElement(
-              mergeContext.myDoc().maps,
+        : (elementId, fromSide, mergeContext) =>
+            context.defaultHooks.arePositionsCompatible(
               elementType,
-              elementId
-            )
-              ? (mappedElement(
-                  mergeContext.myDoc().maps,
-                  elementType,
-                  elementId
-                ) as IParentedId)
-              : null;
-            const rightElement = hasMappedElement(
-              mergeContext.theirDoc().maps,
-              elementType,
-              elementId
-            )
-              ? (mappedElement(
-                  mergeContext.theirDoc().maps,
-                  elementType,
-                  elementId
-                ) as IParentedId)
-              : null;
-            if (!(leftElement && rightElement)) return true;
-            if (
-              !isNullableId(leftElement.parentId) &&
-              !isNullableId(rightElement.parentId)
-            ) {
-              return true;
-            }
-            if (
-              leftElement.parentId !== rightElement.parentId ||
-              leftElement.parentType !== rightElement.parentType
-            ) {
-              return false;
-            }
-            return fromSide === ProcessingOrderFrom.both;
-          },
+              elementId,
+              fromSide,
+              mergeContext
+            ),
       addElement: elementOverrides.addElement
         ? elementOverrides.addElement
         : <ElementType extends IParentedId>(
             element: ElementType,
-            parentPath: Path<MapsInterface>,
-            position: SubEntityPathElement<MapsInterface>,
-            mergeContext: II3WMergeContext<MapsInterface, U>
-          ): ElementType => {
-            const insertCmd: IInsertElement<
-              ElementType,
-              MapsInterface,
-              keyof ElementType,
-              U
-            > = {
-              __typename: HDocCommandType.INSERT_ELEMENT,
-              element: stripChildrenFromElement(
-                mergeContext.mergedDoc.schema,
-                elementType,
-                element
-              ),
+            parentPath: Path<MapsOfNormDoc<NorDoc>>,
+            position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+            mergeContext: II3WMergeContext<NorDoc>
+          ): ElementType =>
+            context.defaultHooks.addElement(
+              elementType,
+              element,
               parentPath,
               position,
-              targetElement: element._id
-                ? {
-                    __typename: elementType,
-                    _id: element._id
-                  }
-                : undefined
-            };
-            const newElement = mergeContext.mergedDoc.insertElement(insertCmd);
-            return newElement;
-          }
+              mergeContext
+            )
     };
     elementTypesOverridesMap.set(typeUid, overridableFunctions!);
   }
@@ -755,12 +858,14 @@ function fnsForElementType<
  * @param {II3WMergeContext<MapsInterface, U>} mergeCtx
  * @returns {IMutableDocument<MapsInterface, U>}
  */
-function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
-  mergeCtx: II3WMergeContext<MapsInterface, U>
-): IMutableDocument<MapsInterface, U> {
+function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
+  mergeCtx: II3WMergeContext<NorDoc>
+): IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, NorDoc> {
   const {myDoc: left, theirDoc: right, mergedDoc, baseDoc} = mergeCtx;
   for (
-    const nodeQueue: Array<[U, Id]> = [[mergedDoc.rootType, mergedDoc.rootId]],
+    const nodeQueue: Array<[UOfNormDoc<NorDoc>, Id]> = [
+        [mergedDoc.rootType, mergedDoc.rootId]
+      ],
       nodesInQueue: Set<string> = new Set([
         getElementUid(mergedDoc.rootType, mergedDoc.rootId)
       ]);
@@ -770,13 +875,22 @@ function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
     const [nodeType, nodeId] = nodeQueue.shift()!;
     const {mergeElementInfo} = fnsForElementType(mergeCtx, nodeType);
     const baseEl = hasMappedElement(baseDoc.maps, nodeType, nodeId)
-      ? (mappedElement(baseDoc.maps, nodeType, nodeId) as IParentedId<U, U>)
+      ? (mappedElement(baseDoc.maps, nodeType, nodeId) as IParentedId<
+          UOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>
+        >)
       : null;
     const leftEl = hasMappedElement(left().maps, nodeType, nodeId)
-      ? (mappedElement(left().maps, nodeType, nodeId) as IParentedId<U, U>)
+      ? (mappedElement(left().maps, nodeType, nodeId) as IParentedId<
+          UOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>
+        >)
       : null;
     const rightEl = hasMappedElement(right().maps, nodeType, nodeId)
-      ? (mappedElement(right().maps, nodeType, nodeId) as IParentedId<U, U>)
+      ? (mappedElement(right().maps, nodeType, nodeId) as IParentedId<
+          UOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>
+        >)
       : null;
     mergeElementInfo(baseEl, leftEl, rightEl, mergeCtx);
     const nodeSchema = mergedDoc.schema.types[nodeType];
@@ -788,8 +902,9 @@ function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
           mergeCtx,
           nodeType,
           nodeId,
-          (linkFieldProps[0] as IFieldEntityReference<U>).__schemaType,
-          linkField as AllMappedTypesFields<MapsInterface>
+          (linkFieldProps[0] as IFieldEntityReference<UOfNormDoc<NorDoc>>)
+            .__schemaType,
+          linkField as AllMappedTypesFields<MapsOfNormDoc<NorDoc>>
         ).filter(([nodeType, nodeId]) => {
           const nodeUid = getElementUid(nodeType, nodeId);
           if (nodesInQueue.has(nodeUid)) {
@@ -805,7 +920,7 @@ function buildMergedTree<MapsInterface, U extends keyof MapsInterface>(
       // so that in merges we could clone copies if needed.
     }
   }
-  const elementsToDelete: Array<[U, Id]> = [];
+  const elementsToDelete: Array<[UOfNormDoc<NorDoc>, Id]> = [];
   visitDocument(
     mergedDoc,
     (doc, nodeType, nodeId) => {
@@ -865,23 +980,23 @@ function isConflictMergeZone(obj: any): obj is IMergeConflictRegion<any> {
  * needed during the merging and we want to ensure the new rebased
  * value is used straight away.
  */
-class NextSiblingToProcessIterator<MapsInterface, U extends keyof MapsInterface>
+class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
   implements IterableIterator<IProcessingOrderElement> {
   private baseArray: Id[];
   private _mergingArray: Id[];
   private _leftArray: Id[];
   private _rightArray: Id[];
   private mergeZones: MergeRegion<Id>[];
-  private mergeCtx: II3WMergeContext<MapsInterface, U>;
-  private childType: U;
-  private parentType: U;
+  private mergeCtx: II3WMergeContext<NorDoc>;
+  private childType: UOfNormDoc<NorDoc>;
+  private parentType: UOfNormDoc<NorDoc>;
 
   constructor(
-    mergeCtx: II3WMergeContext<MapsInterface, U>,
-    parentType: U,
+    mergeCtx: II3WMergeContext<NorDoc>,
+    parentType: UOfNormDoc<NorDoc>,
     parentId: Id,
-    childType: U,
-    linkedArrayField: AllMappedTypesFields<MapsInterface>
+    childType: UOfNormDoc<NorDoc>,
+    linkedArrayField: AllMappedTypesFields<MapsOfNormDoc<NorDoc>>
   ) {
     this.mergeCtx = mergeCtx;
     this.childType = childType;
@@ -934,9 +1049,18 @@ class NextSiblingToProcessIterator<MapsInterface, U extends keyof MapsInterface>
     }
     const mergeZone = this.mergeZones[0];
     if (isOkMergeZone(mergeZone)) {
+      const nextId = mergeZone.ok.shift()!;
+      const isInLeft = this._leftArray.indexOf(nextId) !== -1;
+      const isInRight = this._rightArray.indexOf(nextId) !== -1;
+      const nextFrom =
+        isInLeft && isInRight
+          ? ProcessingOrderFrom.both
+          : isInLeft
+          ? ProcessingOrderFrom.left
+          : ProcessingOrderFrom.right;
       const nextValue: IProcessingOrderElement = {
-        _id: mergeZone.ok.shift()!,
-        from: ProcessingOrderFrom.both
+        _id: nextId,
+        from: nextFrom
       };
       if (mergeZone.ok.length === 0) {
         this.mergeZones.shift();
@@ -982,21 +1106,27 @@ class NextSiblingToProcessIterator<MapsInterface, U extends keyof MapsInterface>
                   this.mergeCtx.baseDoc.maps,
                   this.childType,
                   o[0]
-                ) as IParentedId<U, U>)
+                ) as IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>)
               : null;
-          const leftEl: IParentedId<U, U> | null = leftId
+          const leftEl: IParentedId<
+            UOfNormDoc<NorDoc>,
+            UOfNormDoc<NorDoc>
+          > | null = leftId
             ? (mappedElement(
                 this.mergeCtx.myDoc().maps,
                 this.childType,
                 leftId
-              ) as IParentedId<U, U>)
+              ) as IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>)
             : null;
-          const rightEl: IParentedId<U, U> | null = rightId
+          const rightEl: IParentedId<
+            UOfNormDoc<NorDoc>,
+            UOfNormDoc<NorDoc>
+          > | null = rightId
             ? (mappedElement(
                 this.mergeCtx.theirDoc().maps,
                 this.childType,
                 rightId
-              ) as IParentedId<U, U>)
+              ) as IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>)
             : null;
           const {cmpSiblings} = fnsForElementType(
             this.mergeCtx,
@@ -1117,13 +1247,13 @@ class NextSiblingToProcessIterator<MapsInterface, U extends keyof MapsInterface>
  * @param {AllMappedTypesFields<MapsInterface>} linkedArrayField
  * @returns {Array<[U, Id]>}
  */
-function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
-  mergeCtx: II3WMergeContext<MapsInterface, U>,
-  parentType: U,
+function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
+  mergeCtx: II3WMergeContext<NorDoc>,
+  parentType: UOfNormDoc<NorDoc>,
   parentId: Id,
-  childType: U,
-  linkedArrayField: AllMappedTypesFields<MapsInterface>
-): Array<[U, Id]> {
+  childType: UOfNormDoc<NorDoc>,
+  linkedArrayField: AllMappedTypesFields<MapsOfNormDoc<NorDoc>>
+): Array<[UOfNormDoc<NorDoc>, Id]> {
   const {
     mergedDoc,
     myDoc,
@@ -1144,7 +1274,7 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
     childType,
     linkedArrayField
   );
-  const childrenToQueue: Array<[U, Id]> = [];
+  const childrenToQueue: Array<[UOfNormDoc<NorDoc>, Id]> = [];
   const parentPath = pathForElementWithId(mergedDoc, parentType, parentId);
   for (
     let i = 0,
@@ -1185,15 +1315,21 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
     if (childId === leftChildId) il++;
     if (childId === rightChildId) ir++;
     const baseElement = hasMappedElement(mergedDoc.maps, childType, childId)
-      ? (mappedElement(mergedDoc.maps, childType, childId) as IParentedId<U, U>)
+      ? (mappedElement(mergedDoc.maps, childType, childId) as IParentedId<
+          UOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>
+        >)
       : null;
     const leftElement = hasMappedElement(myDoc().maps, childType, childId)
-      ? (mappedElement(myDoc().maps, childType, childId) as IParentedId<U, U>)
+      ? (mappedElement(myDoc().maps, childType, childId) as IParentedId<
+          UOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>
+        >)
       : null;
     const rightElement = hasMappedElement(theirDoc().maps, childType, childId)
       ? (mappedElement(theirDoc().maps, childType, childId) as IParentedId<
-          U,
-          U
+          UOfNormDoc<NorDoc>,
+          UOfNormDoc<NorDoc>
         >)
       : null;
     const childUid = getElementUid(childType, childId);
@@ -1268,12 +1404,14 @@ function mergeLinkedArray<MapsInterface, U extends keyof MapsInterface>(
           (childFrom === ProcessingOrderFrom.right ||
             childFrom === ProcessingOrderFrom.both)
         ) {
-          moveToMergePosition(
-            childId,
-            parentPath,
-            [linkedArrayField, mergedIndex],
-            mergeCtx
-          );
+          if (baseChildId !== childId) {
+            moveToMergePosition(
+              childId,
+              parentPath,
+              [linkedArrayField, mergedIndex],
+              mergeCtx
+            );
+          }
           rightState.hasPositionBeenProcessed = true;
           if (leftState) leftState.hasPositionBeenProcessed = true;
           mergedIndex++;

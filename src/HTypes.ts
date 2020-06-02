@@ -180,33 +180,31 @@ export interface IReplayableElementCommand<
   };
 }
 
+export type ElementInfo<T extends IParentedId<any, any>> = Omit<
+  T,
+  '_id' | 'parentId' | 'parentType'
+> &
+  Partial<Omit<IParentedId, '__typename'>>;
+
 export interface IInsertElement<
-  T extends IParentedId,
   MapsInterface,
-  Mandatory extends keyof T = keyof T,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
+  U extends keyof EntitiesMaps<MapsInterface>,
+  T extends IParentedId<U, U>
 > extends IReplayableElementCommand<MapsInterface, U> {
   __typename: HDocCommandType.INSERT_ELEMENT;
   parentPath: Path<MapsInterface>;
   position: SubEntityPathElement<MapsInterface>;
-  element: Omit<Pick<T, Mandatory>, '_id' | 'parentId' | 'parentType'> &
-    Partial<Omit<T, '_id' & Mandatory>> & {
-      _id?: Id;
-    };
+  element: ElementInfo<T>;
 }
 
 export interface IChangeElement<
   MapsInterface,
-  T extends IParentedId,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
+  U extends keyof EntitiesMaps<MapsInterface>,
+  T extends IParentedId<U, U>
 > extends IReplayableElementCommand<MapsInterface, U> {
   __typename: HDocCommandType.CHANGE_ELEMENT;
   path: Path<MapsInterface>;
-  changes: Pick<T, '__typename'> & Partial<Omit<T, '__typename'>>;
+  changes: Partial<T> & Pick<T, '__typename'>;
 }
 
 export interface IDeleteElement<
@@ -221,10 +219,8 @@ export interface IDeleteElement<
 
 export interface IMoveElement<
   MapsInterface,
-  T extends IParentedId,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
+  U extends keyof EntitiesMaps<MapsInterface>,
+  T extends IParentedId<U, U>
 > extends IReplayableElementCommand<MapsInterface, U> {
   __typename: HDocCommandType.MOVE_ELEMENT;
   fromPath: Path<MapsInterface>;
@@ -235,15 +231,13 @@ export interface IMoveElement<
 
 export type HDocOperation<
   MapsInterface,
-  T extends IParentedId,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
+  U extends keyof EntitiesMaps<MapsInterface>,
+  T extends IParentedId<U, U>
 > =
-  | IInsertElement<T, MapsInterface, any, U>
-  | IChangeElement<MapsInterface, T, U>
+  | IInsertElement<MapsInterface, U, T>
+  | IChangeElement<MapsInterface, U, T>
   | IDeleteElement<MapsInterface, U>
-  | IMoveElement<MapsInterface, T, U>;
+  | IMoveElement<MapsInterface, U, T>;
 
 // Schema related types
 export interface IFieldEntityReference<T> {
@@ -341,7 +335,7 @@ export interface IReplayChangesDocument<
    * List of the commands operated on this mutable document since
    * its instantiation for the original normalized document
    */
-  readonly changes: HDocOperation<MapsInterface, any, U>[];
+  readonly changes: HDocOperation<MapsInterface, U, any>[];
 
   /**
    * Applies a series of document changes to the document,
@@ -356,8 +350,8 @@ export interface IReplayChangesDocument<
    */
   applyChanges: (
     changes:
-      | HDocOperation<MapsInterface, any, U>
-      | Array<HDocOperation<MapsInterface, any, U>>
+      | HDocOperation<MapsInterface, U, any>
+      | Array<HDocOperation<MapsInterface, U, any>>
   ) => void;
 }
 
@@ -386,8 +380,8 @@ export interface IMutableDocument<
    *
    * @param {IInsertElement<ElementType, Doc, U>} insertCommand
    */
-  insertElement: <T extends IParentedId, Mandatory extends keyof T = keyof T>(
-    insertCommand: IInsertElement<T, MapsInterface, Mandatory, U>
+  insertElement: <T extends IParentedId<U, U>>(
+    insertCommand: IInsertElement<MapsInterface, U, T>
   ) => T;
 
   /**
@@ -404,8 +398,8 @@ export interface IMutableDocument<
    *
    * @param {IChangeElement<ElementType, Doc, U>} changeCommand
    */
-  changeElement: <T extends IParentedId>(
-    changeCommand: IChangeElement<MapsInterface, T, U>
+  changeElement: <T extends IParentedId<U, U>>(
+    changeCommand: IChangeElement<MapsInterface, U, T>
   ) => void;
 
   /**
@@ -414,8 +408,8 @@ export interface IMutableDocument<
    * the values of the element being moved at the same time.
    * @param {IMoveElement<ElementType, Doc, U>} moveCommand
    */
-  moveElement: <T extends IParentedId>(
-    moveCommand: IMoveElement<MapsInterface, T, U>
+  moveElement: <T extends IParentedId<U, U>>(
+    moveCommand: IMoveElement<MapsInterface, U, T>
   ) => void;
 
   pathForElementWithId: (
@@ -576,18 +570,18 @@ export interface IVisitor<
  * It includes a working version of the document and a map of the conflicts
  * the merge generated, if any.
  */
-export interface II3MergeResult<MapsInterface, U extends keyof MapsInterface> {
+export interface II3MergeResult<NorDoc extends INormalizedDocument<any, any>> {
   /**
    * The merged document, which is still a normalized document. It contains the
    * provisional victors of any conflicts generated during the merge
    */
-  mergedDoc: INormalizedDocument<MapsInterface, U>;
+  mergedDoc: NorDoc;
 
   /**
    * For each entity type in the normalised document, it has a conflict map
    * that has one record for each element of that type that has at least a conflict.
    */
-  conflicts: ConflictsMap<MapsInterface, U>;
+  conflicts: ConflictsMap<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
 }
 
 /**
@@ -615,18 +609,22 @@ export interface IGetterSetter<T> {
  * as part of their list of parameters
  */
 export interface II3WMergeContext<
-  MapsInterface,
-  U extends keyof MapsInterface
+  NorDoc extends INormalizedDocument<any, any>
 > {
   myElementsMergeState: Map<string, IMergeElementsState>;
   theirElementsMergeState: Map<string, IMergeElementsState>;
-  baseDoc: INormalizedDocument<MapsInterface, U>;
-  myDoc: IGetterSetter<INormalizedDocument<MapsInterface, U>>;
-  theirDoc: IGetterSetter<INormalizedDocument<MapsInterface, U>>;
-  elementsToDelete: Array<{__typename: U; _id: Id}>;
-  mergedDoc: IMutableDocument<MapsInterface, U>;
-  conflicts: ConflictsMap<MapsInterface, U>;
-  overrides?: MergeOverrides<MapsInterface, U, any>;
+  baseDoc: NorDoc;
+  myDoc: IGetterSetter<NorDoc>;
+  theirDoc: IGetterSetter<NorDoc>;
+  elementsToDelete: Array<{__typename: UOfNormDoc<NorDoc>; _id: Id}>;
+  mergedDoc: IMutableDocument<
+    MapsOfNormDoc<NorDoc>,
+    UOfNormDoc<NorDoc>,
+    NorDoc
+  >;
+  conflicts: ConflictsMap<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
+  overrides?: MergeOverridesMap<NorDoc, any>;
+  defaultHooks: IMergeHooks<NorDoc>;
 }
 
 /**
@@ -662,9 +660,8 @@ export interface IOnIncompatibleArrayElementsResult {
  * can deviate from the default handling of merges.
  */
 export interface IMergeElementOverrides<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  ElementType extends IParentedId
+  ElementType extends IParentedId,
+  NorDoc extends INormalizedDocument<any, any>
 > {
   /**
    * Comparison used to determine the processing order of an array linked field. The elements
@@ -680,7 +677,7 @@ export interface IMergeElementOverrides<
     base: ElementType | null,
     a: ElementType | null,
     b: ElementType | null,
-    mergeContext: II3WMergeContext<MapsInterface, U>
+    mergeContext: II3WMergeContext<NorDoc>
   ) => number;
 
   /**
@@ -697,7 +694,7 @@ export interface IMergeElementOverrides<
     base: ElementType | null,
     a: ElementType | null,
     b: ElementType | null,
-    mergeContext: II3WMergeContext<MapsInterface, U>
+    mergeContext: II3WMergeContext<NorDoc>
   ) => void;
 
   /**
@@ -705,7 +702,7 @@ export interface IMergeElementOverrides<
    */
   onDeleteElement: (
     elementId: Id,
-    mergeContext: II3WMergeContext<MapsInterface, U>
+    mergeContext: II3WMergeContext<NorDoc>
   ) => void;
 
   /**
@@ -732,7 +729,7 @@ export interface IMergeElementOverrides<
   arePositionsCompatible: (
     elementId: Id,
     fromSide: ProcessingOrderFrom,
-    mergeContext: II3WMergeContext<MapsInterface, U>
+    mergeContext: II3WMergeContext<NorDoc>
   ) => boolean;
 
   /**
@@ -741,9 +738,9 @@ export interface IMergeElementOverrides<
    */
   moveToMergePosition: (
     elementId: Id,
-    toParentPath: Path<MapsInterface>,
-    toPosition: SubEntityPathElement<MapsInterface>,
-    mergeContext: II3WMergeContext<MapsInterface, U>
+    toParentPath: Path<MapsOfNormDoc<NorDoc>>,
+    toPosition: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    mergeContext: II3WMergeContext<NorDoc>
   ) => void;
 
   /**
@@ -757,9 +754,9 @@ export interface IMergeElementOverrides<
    */
   addElement: (
     element: ElementType,
-    parentPath: Path<MapsInterface>,
-    position: SubEntityPathElement<MapsInterface>,
-    mergeContext: II3WMergeContext<MapsInterface, U>
+    parentPath: Path<MapsOfNormDoc<NorDoc>>,
+    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    mergeContext: II3WMergeContext<NorDoc>
   ) => ElementType;
 
   /**
@@ -782,20 +779,181 @@ export interface IMergeElementOverrides<
    */
   onIncompatibleElementVersions: (
     elementId: Id,
-    parentPath: Path<MapsInterface>,
-    position: SubEntityPathElement<MapsInterface>,
+    parentPath: Path<MapsOfNormDoc<NorDoc>>,
+    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
     versionMoved: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
-    mergeContext: II3WMergeContext<MapsInterface, U>
+    mergeContext: II3WMergeContext<NorDoc>
   ) => IOnIncompatibleArrayElementsResult;
 }
 
-export type MergeOverrides<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  ElementType extends IParentedId<U, U>
+export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
+  /**
+   * Comparison used to determine the processing order of an array linked field. The elements
+   * compared will be from the two later branches of a three-way merge to determine which
+   * id will potentially be added first in the linked array of the merged tree.
+   *
+   * @param {ElementType | null} a
+   * @param {ElementType | null} b
+   * @param {II3WMergeContext<MapsInterface, U>} mergeContext
+   * @returns {number}
+   */
+  cmpSiblings: (
+    elementType: UOfNormDoc<NorDoc>,
+    base: IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> | null,
+    a: IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> | null,
+    b: IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> | null,
+    mergeContext: II3WMergeContext<NorDoc>
+  ) => number;
+
+  /**
+   * Allows customising which fields are considered when merging element information.
+   * If some fields for instance determine and are merged when determining the position
+   * of elements in parents, this mergeInfo can decide not to look at those fields.
+   *
+   * @param {ElementType} base
+   * @param {ElementType} a
+   * @param {ElementType} b
+   * @returns {ElementInfoConflicts<ElementType>}
+   */
+  mergeElementInfo: <
+    T extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
+    K extends keyof T = keyof T
+  >(
+    mergeContext: II3WMergeContext<NorDoc>,
+    elementType: UOfNormDoc<NorDoc>,
+    base: T | null,
+    a: T | null,
+    b: T | null,
+    ignoreFields?: K[]
+  ) => void;
+
+  /**
+   * Allows customising how an element is removed from the merging tree
+   */
+  onDeleteElement: (
+    elementType: UOfNormDoc<NorDoc>,
+    elementId: Id,
+    mergeContext: II3WMergeContext<NorDoc>
+  ) => void;
+
+  /**
+   * Called when an element is present in all the versions
+   * of the document being merged, but has been edited in both later versions.
+   *
+   * This function determines if the merged tree will retain a single element that
+   * merges the information from the two branches, or if one of the two versions of
+   * the element will be cloned as a new subtree.
+   *
+   * If true is returned, instead of the node in a different position being cloned,
+   * we consider this position to be
+   * fine for the other version of the document as well and only one copy of the
+   * element will be kept (and merged).
+   *
+   * This allows documents to say that even if the positions are different, in
+   * their domain the positions are equivalent so keeping the first you meet is
+   * fine.
+   *
+   * @param {Id} elementId
+   * @param {II3WMergeContext<MapsInterface, U>} mergeContext
+   * @returns {boolean}
+   */
+  arePositionsCompatible: (
+    elementType: UOfNormDoc<NorDoc>,
+    elementId: Id,
+    fromSide: ProcessingOrderFrom,
+    mergeContext: II3WMergeContext<NorDoc>
+  ) => boolean;
+
+  /**
+   * Called when an element is moved to a different position in the merged document.
+   * Allows documents to use their domain aware move functions.
+   */
+  moveToMergePosition: (
+    elementType: UOfNormDoc<NorDoc>,
+    elementId: Id,
+    toParentPath: Path<MapsOfNormDoc<NorDoc>>,
+    toPosition: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    mergeContext: II3WMergeContext<NorDoc>
+  ) => void;
+
+  /**
+   * Called when an element is added to the document, allowing domain specific
+   * functions to override the generic HDocument insert command.
+   *
+   * @param {ElementType} element
+   * @param {Path<MapsInterface>} parentPath
+   * @param {SubEntityPathElement<MapsInterface>} position
+   * @returns {ElementType}
+   */
+  addElement: <
+    ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
+  >(
+    elementType: UOfNormDoc<NorDoc>,
+    element: ElementType,
+    parentPath: Path<MapsOfNormDoc<NorDoc>>,
+    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    mergeContext: II3WMergeContext<NorDoc>
+  ) => ElementType;
+
+  /**
+   * Called when an element is present in all versions of the document,
+   * has been moved to different positions within the document hierarchy,
+   * and the two new positions are not compatible.
+   *
+   * Allows documents to customise how this conflict is resolved instead of
+   * relying on the standard resolution method - creating a clone of the subtree
+   * rooted at the element by reiding the subtree in the version of the tree where
+   * the element occurs later in the visit.
+   *
+   * @param {Id} elementId
+   * @param {Path<MapsInterface>} parentPath
+   * @param {SubEntityPathElement<MapsInterface>} position
+   * @param {"left" | "right"} versionMoved
+   * @param {II3WMergeContext<MapsInterface, U>} mergeContext
+   * @returns {boolean} return true if you added a node at the current position
+   *          in the merged array
+   */
+  onIncompatibleElementVersions: (
+    elementType: UOfNormDoc<NorDoc>,
+    elementId: Id,
+    parentPath: Path<MapsOfNormDoc<NorDoc>>,
+    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    versionMoved: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
+    mergeContext: II3WMergeContext<NorDoc>
+  ) => IOnIncompatibleArrayElementsResult;
+}
+
+export type MergeOverridesMap<
+  NorDoc extends INormalizedDocument<any, any>,
+  ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
 > = {
-  [F in U]?: Partial<IMergeElementOverrides<MapsInterface, U, ElementType>>;
+  [F in UOfNormDoc<NorDoc>]?: Partial<
+    IMergeElementOverrides<ElementType, NorDoc>
+  >;
 };
+
+export interface IMergeOptions<NorDoc extends INormalizedDocument<any, any>> {
+  /**
+   * During the merge process a mutable document is generated at the start
+   * of the merging process to generate the merge tree.
+   *
+   * This hook allows customising how the mutable document is initialised
+   * starting from a input normalised document.
+   *
+   * @param {NorDoc} document
+   * @returns {IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>}
+   */
+  onCreateMutableDocument?: (
+    document: NorDoc
+  ) => IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, NorDoc>;
+
+  /**
+   * For each element type you can customise how various aspects of the
+   * merge operate, so that higher level data structures can keep their
+   * own invariants during a merge.
+   */
+  elementsOverrides: MergeOverridesMap<NorDoc, any>;
+}
 
 // Represents a denormalized node, where parentType and
 // parentId are replaced by a parent pointer
@@ -815,3 +973,14 @@ export interface IProcessingOrderElement {
   _id: Id;
   from: ProcessingOrderFrom;
 }
+
+export type MapsOfNormDoc<T> = T extends INormalizedDocument<
+  infer MapsInterface,
+  any
+>
+  ? MapsInterface
+  : never;
+
+export type UOfNormDoc<T> = T extends INormalizedDocument<any, infer U>
+  ? U
+  : never;
