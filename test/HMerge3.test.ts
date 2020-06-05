@@ -35,7 +35,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node1',
@@ -67,7 +67,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node1',
@@ -81,7 +81,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node2',
@@ -101,7 +101,7 @@ describe('Merging trees', () => {
       docReducer(myTree, {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 1],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node2',
@@ -123,7 +123,7 @@ describe('Merging trees', () => {
     const baseTree = docReducer(emptyTestDocument(), {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -136,7 +136,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node2',
@@ -150,7 +150,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node3',
@@ -161,7 +161,7 @@ describe('Merging trees', () => {
       },
       {
         __typename: HDocCommandType.DELETE_ELEMENT,
-        path: ['children', 1]
+        element: ['children', 1]
       }
     ]);
     const {mergedDoc, conflicts} = threeWayMerge(baseTree, myTree, theirTree);
@@ -175,7 +175,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 0],
-          parentPath: [],
+          parent: [],
           element: {
             __typename: 'Node',
             _id: 'Node2',
@@ -187,7 +187,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 1],
-          parentPath: [],
+          parent: [],
           element: {
             __typename: 'Node',
             _id: 'Node3',
@@ -206,7 +206,10 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 1],
-        parentPath: [],
+        parent: {
+          __typename: 'Root',
+          _id: 1
+        },
         element: {
           __typename: 'Node',
           _id: 'Node3',
@@ -217,7 +220,10 @@ describe('Merging trees', () => {
       },
       {
         __typename: HDocCommandType.DELETE_ELEMENT,
-        path: ['children', 2]
+        element: {
+          __typename: 'Node',
+          _id: 'Node1'
+        }
       }
     ]);
     expect(mergedDoc).toEqual(mergedDoc2);
@@ -229,7 +235,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node1',
@@ -241,7 +247,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 1],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node2',
@@ -253,7 +259,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: ['children', 1],
+        parent: ['children', 1],
         element: {
           __typename: 'Node',
           _id: 'Node3',
@@ -266,9 +272,9 @@ describe('Merging trees', () => {
     const myTree = docReducer(baseTree, [
       {
         __typename: HDocCommandType.MOVE_ELEMENT,
-        fromPath: ['children', 1, 'children', 0],
+        element: ['children', 1, 'children', 0],
         toPosition: ['children', 0],
-        toParentPath: ['children', 0],
+        toParent: ['children', 0],
         changes: {
           __typename: 'Node',
           isChecked: true
@@ -279,7 +285,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 1],
-        parentPath: ['children', 1],
+        parent: ['children', 1],
         element: {
           __typename: 'Node',
           _id: 'Node4',
@@ -300,7 +306,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 0],
-          parentPath: [],
+          parent: [],
           element: {
             __typename: 'Node',
             _id: 'Node1',
@@ -312,7 +318,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 1],
-          parentPath: [],
+          parent: [],
           element: {
             __typename: 'Node',
             _id: 'Node2',
@@ -324,7 +330,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 0],
-          parentPath: ['children', 0],
+          parent: ['children', 0],
           element: {
             __typename: 'Node',
             _id: 'Node3',
@@ -336,7 +342,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 0],
-          parentPath: ['children', 1],
+          parent: ['children', 1],
           element: {
             __typename: 'Node',
             _id: 'Node4',
@@ -360,7 +366,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node1',
@@ -372,7 +378,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 1],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node2',
@@ -384,7 +390,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: ['children', 1],
+        parent: ['children', 1],
         element: {
           __typename: 'Node',
           _id: 'Node3',
@@ -397,9 +403,9 @@ describe('Merging trees', () => {
     const myTree = docReducer(baseTree, [
       {
         __typename: HDocCommandType.MOVE_ELEMENT,
-        fromPath: ['children', 1, 'children', 0],
+        element: ['children', 1, 'children', 0],
         toPosition: ['children', 0],
-        toParentPath: ['children', 0],
+        toParent: ['children', 0],
         changes: {
           __typename: 'Node',
           isChecked: true
@@ -409,7 +415,7 @@ describe('Merging trees', () => {
     const theirTree = docReducer(baseTree, [
       {
         __typename: HDocCommandType.DELETE_ELEMENT,
-        path: ['children', 1, 'children', 0]
+        element: ['children', 1, 'children', 0]
       }
     ]);
     const {mergedDoc, conflicts} = threeWayMerge(baseTree, myTree, theirTree);
@@ -423,7 +429,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 0],
-          parentPath: [],
+          parent: [],
           element: {
             __typename: 'Node',
             _id: 'Node1',
@@ -435,7 +441,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 1],
-          parentPath: [],
+          parent: [],
           element: {
             __typename: 'Node',
             _id: 'Node2',
@@ -447,7 +453,7 @@ describe('Merging trees', () => {
         {
           __typename: HDocCommandType.INSERT_ELEMENT,
           position: ['children', 0],
-          parentPath: ['children', 0],
+          parent: ['children', 0],
           element: {
             __typename: 'Node',
             _id: 'Node3',
@@ -471,7 +477,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node1',
@@ -483,7 +489,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 1],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node2',
@@ -495,7 +501,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 2],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node3',
@@ -507,7 +513,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: ['children', 1],
+        parent: ['children', 1],
         element: {
           __typename: 'Node',
           _id: 'Node2_1',
@@ -520,9 +526,9 @@ describe('Merging trees', () => {
     const myTree = docReducer(baseTree, [
       {
         __typename: HDocCommandType.MOVE_ELEMENT,
-        fromPath: ['children', 1, 'children', 0],
+        element: ['children', 1, 'children', 0],
         toPosition: ['children', 0],
-        toParentPath: ['children', 0],
+        toParent: ['children', 0],
         changes: {
           __typename: 'Node',
           isChecked: true
@@ -532,9 +538,9 @@ describe('Merging trees', () => {
     const theirTree = docReducer(baseTree, [
       {
         __typename: HDocCommandType.MOVE_ELEMENT,
-        fromPath: ['children', 1, 'children', 0],
+        element: ['children', 1, 'children', 0],
         toPosition: ['children', 0],
-        toParentPath: ['children', 2],
+        toParent: ['children', 2],
         changes: {
           __typename: 'Node',
           text: 'Moved node'
@@ -607,7 +613,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: [],
         element: {
           __typename: 'Node',
           _id: 'Node1',
@@ -619,7 +625,7 @@ describe('Merging trees', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: ['children', 0],
+        parent: ['children', 0],
         element: {
           __typename: 'Node',
           _id: 'Node2',
@@ -632,7 +638,7 @@ describe('Merging trees', () => {
     const leftTree = docReducer(baseTree, [
       {
         __typename: HDocCommandType.CHANGE_ELEMENT,
-        path: ['children', 0, 'children', 0],
+        element: ['children', 0, 'children', 0],
         changes: {
           __typename: 'INode',
           text: 'second node',
@@ -643,7 +649,7 @@ describe('Merging trees', () => {
     const rightTree = docReducer(baseTree, [
       {
         __typename: HDocCommandType.CHANGE_ELEMENT,
-        path: ['children', 0, 'children', 0],
+        element: ['children', 0, 'children', 0],
         changes: {
           __typename: 'INode',
           text: 'SeconD node',

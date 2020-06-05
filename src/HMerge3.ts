@@ -9,6 +9,7 @@ import {
   cloneNormalizedDocument,
   hasMappedElement,
   idAndTypeForPath,
+  idAndTypeOfChange,
   isNullableId,
   isParentedId,
   mappedElement,
@@ -202,19 +203,15 @@ const defaultHooks: IMergeHooks<NDoc> = {
         IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>
       > = {
         __typename: HDocCommandType.MOVE_ELEMENT,
-        fromPath: pathForElementWithId(
+        element: pathForElementWithId(
           mergeCtx.mergedDoc,
           elementType,
           elementId
         ),
-        toParentPath: parentPath,
+        toParent: parentPath,
         toPosition: position,
         changes: {
           __typename: elementType
-        },
-        targetElement: {
-          __typename: elementType,
-          _id: elementId
         }
       };
       mergeCtx.mergedDoc.moveElement(moveElementCmd);
@@ -261,17 +258,13 @@ const defaultHooks: IMergeHooks<NDoc> = {
       IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>
     > = {
       __typename: HDocCommandType.MOVE_ELEMENT,
-      fromPath: pathForElementWithId(
+      element: pathForElementWithId(
         mergeContext.mergedDoc,
         elementType,
         elementId
       ),
-      toParentPath,
-      toPosition,
-      targetElement: {
-        __typename: elementType,
-        _id: elementId
-      }
+      toParent: toParentPath,
+      toPosition
     };
     mergeContext.mergedDoc.moveElement(moveCmd);
   },
@@ -341,7 +334,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
         T
       > = {
         __typename: HDocCommandType.CHANGE_ELEMENT,
-        path: pathForElementWithId(
+        element: pathForElementWithId(
           mergeContext.mergedDoc,
           elementType,
           (base as IParentedId)._id
@@ -349,10 +342,6 @@ const defaultHooks: IMergeHooks<NDoc> = {
         changes: {
           ...elementInfoDiff,
           __typename: elementType as UOfNormDoc<NDoc>
-        },
-        targetElement: {
-          __typename: elementType,
-          _id: (base as IParentedId)._id
         }
       };
       mergeContext.mergedDoc.changeElement(changeCmd);
@@ -361,15 +350,11 @@ const defaultHooks: IMergeHooks<NDoc> = {
   onDeleteElement: (elementType, elementId, mergeContext) => {
     const deleteCmd: IDeleteElement<MapsOfNormDoc<NDoc>, UOfNormDoc<NDoc>> = {
       __typename: HDocCommandType.DELETE_ELEMENT,
-      path: pathForElementWithId(
+      element: pathForElementWithId(
         mergeContext.mergedDoc,
         elementType,
         elementId
-      ),
-      targetElement: {
-        __typename: elementType,
-        _id: elementId
-      }
+      )
     };
     mergeContext.mergedDoc.deleteElement(deleteCmd);
   },
@@ -445,14 +430,8 @@ const defaultHooks: IMergeHooks<NDoc> = {
         elementType,
         element
       ),
-      parentPath,
-      position,
-      targetElement: element._id
-        ? {
-            __typename: elementType,
-            _id: element._id
-          }
-        : undefined
+      parent: parentPath,
+      position
     };
     return mergeContext.mergedDoc.insertElement(insertCmd);
   }
@@ -1506,7 +1485,7 @@ function buildMergeElementsState<MapsInterface, U extends keyof MapsInterface>(
       // just skip it
       continue;
     }
-    const {__typename, _id} = branchChange.targetElement!;
+    const {__typename, _id} = idAndTypeOfChange(branchChange);
     for (
       let nextType: U | null = __typename, nextId: null | Id = _id, i = 0;
       nextId !== null && nextType !== null && i < 10000;

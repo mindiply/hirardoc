@@ -89,11 +89,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
             IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
           > = {
             __typename: HDocCommandType.CHANGE_ELEMENT,
-            targetElement: {
-              __typename: nodeType,
-              _id: nodeId
-            },
-            path: nodePath,
+            element: nodePath,
             changes: {__typename: destElement.__typename, ...infoChanges}
           };
           mutableDoc.changeElement(changeElementCmd);
@@ -148,20 +144,12 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
                   IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
                 > = {
                   __typename: HDocCommandType.MOVE_ELEMENT,
-                  targetElement: {
-                    _id: destChildId,
-                    __typename: childType
-                  },
-                  fromPath: pathForElementWithId(
+                  element: pathForElementWithId(
                     mutableDoc,
                     childType,
                     destChildId
                   ),
-                  toParentPath: pathForElementWithId(
-                    mutableDoc,
-                    nodeType,
-                    nodeId
-                  ),
+                  toParent: pathForElementWithId(mutableDoc, nodeType, nodeId),
                   toPosition: [
                     (linkFieldName as any) as AllMappedTypesFields<
                       MapsOfNormDoc<NorDoc>
@@ -197,18 +185,14 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
                   IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
                 > = {
                   __typename: HDocCommandType.INSERT_ELEMENT,
-                  parentPath: nodePath,
+                  parent: nodePath,
                   position: [
                     (linkFieldName as any) as AllMappedTypesFields<
                       MapsOfNormDoc<NorDoc>
                     >,
                     i
                   ],
-                  element: elementInfo,
-                  targetElement: {
-                    __typename: childType,
-                    _id: destChild._id
-                  }
+                  element: elementInfo
                 };
                 mutableDoc.insertElement(addChildCmd);
               }
@@ -225,11 +209,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
               IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
             > = {
               __typename: HDocCommandType.CHANGE_ELEMENT,
-              path: pathForElementWithId(mutableDoc, nodeType, nodeId),
-              targetElement: {
-                __typename: nodeType,
-                _id: nodeId
-              },
+              element: pathForElementWithId(mutableDoc, nodeType, nodeId),
               changes: {
                 __typename: destElement.__typename,
                 [linkFieldName]: (destElement as any)[linkFieldName]
@@ -255,11 +235,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
           UOfNormDoc<NorDoc>
         > = {
           __typename: HDocCommandType.DELETE_ELEMENT,
-          path: pathForElementWithId(doc, nodeType, nodeId),
-          targetElement: {
-            __typename: nodeType,
-            _id: nodeId
-          }
+          element: pathForElementWithId(doc, nodeType, nodeId)
         };
         mutableDoc.deleteElement(deleteElementCmd);
       }

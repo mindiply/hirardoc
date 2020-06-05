@@ -2,7 +2,6 @@ import {isEqual} from 'lodash';
 import {v1 as uuid} from 'uuid';
 import {LazyMutableMap} from './LazyMap';
 import {
-  AllMappedTypes,
   AllMappedTypesFields,
   EntitiesMaps,
   EntityReferences,
@@ -10,6 +9,7 @@ import {
   HDocOperation,
   Id,
   IDocumentSchema,
+  IElementId,
   IFieldEntityReference,
   IInsertElement,
   ILazyMutableMap,
@@ -27,6 +27,14 @@ import {
 
 export function isId(obj: any): obj is Id {
   return typeof obj === 'number' || (obj !== '' && typeof obj === 'string');
+}
+
+export function isElementId(obj: any): obj is IElementId<any> {
+  return (
+    typeof obj === 'object' &&
+    isId(obj._id) &&
+    typeof obj.__typename === 'string'
+  );
 }
 
 export function isNullableId(obj: any): obj is Id | null {
@@ -54,6 +62,18 @@ export function isParentedMap(obj: any): obj is Map<Id, IParentedId> {
     return true;
   }
   return false;
+}
+
+export function isEntitiesMap(obj: any): obj is EntitiesMaps<any, any> {
+  if (typeof obj !== 'object') return false;
+  let i = 0;
+  for (const entityType of Object.keys(obj)) {
+    if (!isParentedMap(obj[entityType])) {
+      return false;
+    }
+    i++;
+  }
+  return i > 0;
 }
 
 function isSubEntityPathElement(obj: any): obj is SubEntityPathElement<any> {
@@ -815,55 +835,40 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
     >(
       insertCmd: IInsertElement<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, T>
     ): T {
-      const {element, parentPath, position, targetElement} = insertCmd;
+      const {element, parent, position} = insertCmd;
       if (!isSubEntityPathElement(position)) {
         throw new Error('Incorrect position parameter');
       }
-      const {__typename: parentType, _id: parentId} = this.idAndTypeForPath(
-        parentPath
-      );
-      const elementId =
-        targetElement && targetElement._id
-          ? targetElement._id
-          : element._id
-          ? element._id
-          : uuid();
+      const {__typename: parentType, _id: parentId} = isElementId(parent)
+        ? parent
+        : this.idAndTypeForPath(parent);
+      const elementId = element._id ? element._id : uuid();
       const newElement = {
         ...element,
         _id: elementId
       } as T;
-      const childType = _addElementIdToParentContext(
+      _addElementIdToParentContext(
         this,
         parentType,
         parentId,
         position,
         newElement
       );
-      const change: HDocOperation<
-        MapsOfNormDoc<NorDoc>,
-        AllMappedTypes<MapsOfNormDoc<NorDoc>>,
-        UOfNormDoc<NorDoc>
-      > = (targetElement
-        ? insertCmd
-        : {
-            ...insertCmd,
-            targetElement: {
-              __typename: childType,
-              _id: elementId
-            }
-          }) as HDocOperation<
-        MapsOfNormDoc<NorDoc>,
-        AllMappedTypes<MapsOfNormDoc<NorDoc>>,
-        UOfNormDoc<NorDoc>
-      >;
-      this.changes.push(change);
+      this.changes.push({
+        ...insertCmd,
+        element: {
+          ...element,
+          _id: elementId
+        },
+        parent: {__typename: parentType, _id: parentId}
+      });
       return newElement;
     },
     changeElement: function (changeCommand) {
-      const {path, changes, targetElement} = changeCommand;
-      const {__typename, _id} = targetElement
-        ? targetElement
-        : this.idAndTypeForPath(path);
+      const {element, changes} = changeCommand;
+      const {__typename, _id} = isElementId(element)
+        ? element
+        : this.idAndTypeForPath(element);
       const existingElement = mappedElement(
         this.maps,
         __typename,
@@ -875,21 +880,26 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
       };
       if (isEqual(updatedElement, existingElement)) return;
       this.maps[__typename].set(updatedElement._id, updatedElement);
-      this.changes.push(changeCommand);
+      this.changes.push(
+        isElementId(element)
+          ? changeCommand
+          : {
+              ...changeCommand,
+              element: {
+                __typename,
+                _id
+              }
+            }
+      );
     },
     moveElement: function <
       T extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
     >(moveCommand: IMoveElement<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, T>) {
-      const {
-        targetElement,
-        changes,
-        fromPath,
-        toParentPath,
-        toPosition
-      } = moveCommand;
+      const {changes, element, toParent, toPosition} = moveCommand;
       // 1. Find the element
-      const {__typename, _id} =
-        targetElement || this.idAndTypeForPath(fromPath);
+      const {__typename, _id} = isElementId(element)
+        ? element
+        : this.idAndTypeForPath(element);
       const elementToMove = mappedElement(this.maps, __typename, _id) as T;
       const elementSchemaContext = typeMap.get(__typename);
       if (!elementSchemaContext) {
@@ -903,10 +913,11 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
       }
 
       // 3. Find the new parent
-      const {
-        __typename: targetParentType,
-        _id: targetParentId
-      } = this.idAndTypeForPath(toParentPath);
+      const {__typename: targetParentType, _id: targetParentId} = isElementId(
+        toParent
+      )
+        ? toParent
+        : this.idAndTypeForPath(toParent);
 
       // 4. Add reference to element to new parent, while applying additional changes
       // if provided int he command
@@ -918,22 +929,26 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
         changes ? {...elementToMove, ...changes} : elementToMove
       );
       this.changes.push(
-        moveCommand.targetElement
+        isElementId(moveCommand.element) && isElementId(moveCommand.toParent)
           ? moveCommand
           : {
               ...moveCommand,
-              targetElement: {
+              element: {
                 __typename,
                 _id
+              },
+              toParent: {
+                __typename: targetParentType,
+                _id: targetParentId
               }
             }
       );
     },
     deleteElement: function (deleteCommand): void {
-      const {targetElement, path} = deleteCommand;
-      const {__typename, _id} = targetElement
-        ? targetElement
-        : this.idAndTypeForPath(path);
+      const {element} = deleteCommand;
+      const {__typename, _id} = isElementId(element)
+        ? element
+        : this.idAndTypeForPath(element);
       const toDeleteElement = mappedElement(
         this.maps,
         __typename,
@@ -944,11 +959,11 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
       }
       this.maps[__typename].delete(toDeleteElement._id);
       this.changes.push(
-        deleteCommand.targetElement
+        isElementId(deleteCommand.element)
           ? deleteCommand
           : {
               ...deleteCommand,
-              targetElement: {
+              element: {
                 __typename,
                 _id
               }
@@ -1048,11 +1063,25 @@ export function isParentedMutableMap(
   return false;
 }
 
+export function isMutableEntitiesMap(
+  obj: any
+): obj is MutableEntitiesMaps<any, any> {
+  if (typeof obj !== 'object') return false;
+  const fieldNames = Object.keys(obj);
+  if (fieldNames.length < 1) return false;
+  for (const fieldName of fieldNames) {
+    if (!isParentedMutableMap(obj[fieldName])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Checks if an element of type elementType with id elementId is in the document
  * hierarchy.
  *
- * @param {EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>} maps
+ * @param {EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>} docOrMaps
  * @param {U} elementType
  * @param {Id} elementId
  * @returns {boolean}
@@ -1063,10 +1092,27 @@ export function hasMappedElement<
     MapsInterface
   >
 >(
-  maps: EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>,
+  docOrMaps:
+    | EntitiesMaps<MapsInterface, U>
+    | MutableEntitiesMaps<MapsInterface, U>
+    | INormalizedDocument<MapsInterface, U>
+    | IMutableDocument<MapsInterface, U>,
   elementType: U,
   elementId: Id
 ): boolean {
+  let maps:
+    | EntitiesMaps<MapsInterface, U>
+    | MutableEntitiesMaps<MapsInterface, U>;
+  if (isEntitiesMap(docOrMaps) || isMutableEntitiesMap(docOrMaps)) {
+    maps = docOrMaps;
+  } else if (
+    isEntitiesMap((docOrMaps as any).maps) ||
+    isMutableEntitiesMap((docOrMaps as any).maps)
+  ) {
+    maps = (docOrMaps as any).maps;
+  } else {
+    return false;
+  }
   if (!(elementType in maps)) {
     return false;
   }
@@ -1092,10 +1138,29 @@ export function mappedElement<
     MapsInterface
   >
 >(
-  maps: EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>,
+  docOrMaps:
+    | EntitiesMaps<MapsInterface, U>
+    | MutableEntitiesMaps<MapsInterface, U>
+    | INormalizedDocument<MapsInterface, U>
+    | IMutableDocument<MapsInterface, U>,
   elementType: U,
   elementId: Id
 ): EntitiesMaps<MapsInterface>[U] extends Map<Id, infer T> ? T : never {
+  let maps:
+    | EntitiesMaps<MapsInterface, U>
+    | MutableEntitiesMaps<MapsInterface, U>;
+  if (isEntitiesMap(docOrMaps) || isMutableEntitiesMap(docOrMaps)) {
+    maps = docOrMaps;
+  } else if (
+    isEntitiesMap((docOrMaps as any).maps) ||
+    isMutableEntitiesMap((docOrMaps as any).maps)
+  ) {
+    maps = (docOrMaps as any).maps;
+  } else {
+    maps = {} as
+      | EntitiesMaps<MapsInterface, U>
+      | MutableEntitiesMaps<MapsInterface, U>;
+  }
   if (!(elementType in maps)) {
     throw new TypeError(`Element type ${elementType} not found`);
   }
@@ -1124,3 +1189,34 @@ export const docReducer = <NorDoc extends INormalizedDocument<any, any>>(
   }
   return mutableDoc.updatedDocument();
 };
+
+export function idAndTypeOfChange<MapsInterface, U extends keyof MapsInterface>(
+  change: HDocOperation<MapsInterface, U, IParentedId<U, U>>,
+  doc?:
+    | INormalizedDocument<MapsInterface, U>
+    | IMutableDocument<MapsInterface, U>
+): IElementId<U> {
+  if (change.__typename === HDocCommandType.INSERT_ELEMENT) {
+    return isElementId(change.element)
+      ? change.element
+      : {__typename: change.element.__typename, _id: 'NOTVALID'};
+  } else if (
+    change.__typename === HDocCommandType.CHANGE_ELEMENT ||
+    change.__typename === HDocCommandType.DELETE_ELEMENT ||
+    change.__typename === HDocCommandType.MOVE_ELEMENT
+  ) {
+    return isElementId(change.element)
+      ? change.element
+      : doc
+      ? idAndTypeForPath(doc, change.element)
+      : {
+          __typename: 'Invalid' as U,
+          _id: 'Invalid'
+        };
+  } else {
+    return {
+      __typename: 'Invalid' as U,
+      _id: 'Invalid'
+    };
+  }
+}

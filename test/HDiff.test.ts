@@ -26,7 +26,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -45,7 +45,10 @@ describe('Diff between versions of the same tree', () => {
     >[] = [
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
-        parentPath: [],
+        parent: {
+          __typename: 'Root',
+          _id: 1
+        },
         position: ['children', 0],
         element: {
           __typename: 'Node',
@@ -68,7 +71,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -88,7 +91,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -106,7 +109,10 @@ describe('Diff between versions of the same tree', () => {
     >[] = [
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
-        parentPath: ['children', 0],
+        parent: {
+          __typename: 'Node',
+          _id: 'Node1'
+        },
         position: ['children', 0],
         element: {
           __typename: 'Node',
@@ -130,7 +136,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -146,7 +152,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -168,7 +174,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node3',
@@ -185,8 +191,8 @@ describe('Diff between versions of the same tree', () => {
       INode
     > = {
       __typename: HDocCommandType.MOVE_ELEMENT,
-      fromPath: ['children', 1, 'children', 0],
-      toParentPath: ['children', 0],
+      element: ['children', 1, 'children', 0],
+      toParent: ['children', 0],
       toPosition: ['children', 0],
       changes: {
         __typename: 'Node',
@@ -204,7 +210,10 @@ describe('Diff between versions of the same tree', () => {
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         position: ['children', 0],
-        parentPath: [],
+        parent: {
+          __typename: 'Root',
+          _id: 1
+        },
         element: {
           __typename: 'Node',
           _id: 'Node3',
@@ -215,8 +224,14 @@ describe('Diff between versions of the same tree', () => {
       },
       {
         __typename: HDocCommandType.MOVE_ELEMENT,
-        fromPath: ['children', 1, 'children', 0],
-        toParentPath: ['children', 0],
+        element: {
+          __typename: 'Node',
+          _id: 'Node2'
+        },
+        toParent: {
+          __typename: 'Node',
+          _id: 'Node3'
+        },
         toPosition: ['children', 0],
         changes: {
           __typename: 'Node',
@@ -238,7 +253,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -256,7 +271,7 @@ describe('Diff between versions of the same tree', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -270,7 +285,7 @@ describe('Diff between versions of the same tree', () => {
     mutableDoc = mutableDocument(a);
     const deleteElementCmd: IDeleteElement<ITestDocElementsMap> = {
       __typename: HDocCommandType.DELETE_ELEMENT,
-      path: ['children', 0, 'children', 0]
+      element: ['children', 0, 'children', 0]
     };
     mutableDoc.deleteElement(deleteElementCmd);
     const changeElementCmd: IChangeElement<
@@ -279,7 +294,7 @@ describe('Diff between versions of the same tree', () => {
       INode
     > = {
       __typename: HDocCommandType.CHANGE_ELEMENT,
-      path: ['children', 0],
+      element: ['children', 0],
       changes: {
         __typename: 'Node',
         isChecked: true
@@ -294,7 +309,10 @@ describe('Diff between versions of the same tree', () => {
     >[] = [
       {
         __typename: HDocCommandType.CHANGE_ELEMENT,
-        path: ['children', 0],
+        element: {
+          __typename: 'Node',
+          _id: 'Node1'
+        },
         changes: {
           __typename: 'Node',
           isChecked: true
@@ -302,7 +320,10 @@ describe('Diff between versions of the same tree', () => {
       },
       {
         __typename: HDocCommandType.DELETE_ELEMENT,
-        path: ['children', 0, 'children', 0]
+        element: {
+          __typename: 'Node',
+          _id: 'Node2'
+        }
       }
     ];
     expect(diff(a, b)).toMatchObject(expectedDiff);

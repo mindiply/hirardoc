@@ -40,8 +40,12 @@ export type AllMappedTypesFields<T> = ValueOf<KeysOfMappedTypes<T>>;
  */
 export type AllMappedTypes<T> = ValueOf<MappedParentedTypes<T>>;
 
-export interface IParentedId<ElementType = any, ParentType = any> extends IId {
-  __typename: ElementType;
+export interface IElementId<U> extends IId {
+  __typename: U;
+}
+
+export interface IParentedId<ElementType = any, ParentType = any>
+  extends IElementId<ElementType> {
   parentId: null | Id;
   parentType: null | ParentType;
 }
@@ -174,10 +178,6 @@ export interface IReplayableElementCommand<
   >
 > {
   __typename: HDocCommandType;
-  targetElement?: {
-    __typename: U;
-    _id: Id;
-  };
 }
 
 export type ElementInfo<T extends IParentedId<any, any>> = Omit<
@@ -192,7 +192,7 @@ export interface IInsertElement<
   T extends IParentedId<U, U>
 > extends IReplayableElementCommand<MapsInterface, U> {
   __typename: HDocCommandType.INSERT_ELEMENT;
-  parentPath: Path<MapsInterface>;
+  parent: Path<MapsInterface> | IElementId<U>;
   position: SubEntityPathElement<MapsInterface>;
   element: ElementInfo<T>;
 }
@@ -203,7 +203,7 @@ export interface IChangeElement<
   T extends IParentedId<U, U>
 > extends IReplayableElementCommand<MapsInterface, U> {
   __typename: HDocCommandType.CHANGE_ELEMENT;
-  path: Path<MapsInterface>;
+  element: Path<MapsInterface> | IElementId<U>;
   changes: Partial<T> & Pick<T, '__typename'>;
 }
 
@@ -214,7 +214,7 @@ export interface IDeleteElement<
   >
 > extends IReplayableElementCommand<MapsInterface, U> {
   __typename: HDocCommandType.DELETE_ELEMENT;
-  path: Path<MapsInterface>;
+  element: Path<MapsInterface> | IElementId<U>;
 }
 
 export interface IMoveElement<
@@ -223,8 +223,8 @@ export interface IMoveElement<
   T extends IParentedId<U, U>
 > extends IReplayableElementCommand<MapsInterface, U> {
   __typename: HDocCommandType.MOVE_ELEMENT;
-  fromPath: Path<MapsInterface>;
-  toParentPath: Path<MapsInterface>;
+  element: Path<MapsInterface> | IElementId<U>;
+  toParent: Path<MapsInterface> | IElementId<U>;
   toPosition: SubEntityPathElement<MapsInterface>;
   changes?: Pick<T, '__typename'> & Partial<Omit<T, '__typename'>>;
 }

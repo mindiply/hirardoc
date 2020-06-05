@@ -58,7 +58,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -100,7 +100,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -113,7 +113,7 @@ describe('Test the basic operations', () => {
     mutableDoc.insertElement(addNodeCmd);
     const removeNodeCmd: IDeleteElement<ITestDocElementsMap> = {
       __typename: HDocCommandType.DELETE_ELEMENT,
-      path: ['children', 0]
+      element: ['children', 0]
     };
     mutableDoc.deleteElement(removeNodeCmd);
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
@@ -166,7 +166,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -183,7 +183,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -251,7 +251,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -268,7 +268,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 1],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -285,7 +285,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node3',
@@ -301,8 +301,8 @@ describe('Test the basic operations', () => {
       INode
     > = {
       __typename: HDocCommandType.MOVE_ELEMENT,
-      fromPath: ['children', 0, 'children', 0],
-      toParentPath: ['children', 1],
+      element: ['children', 0, 'children', 0],
+      toParent: ['children', 1],
       toPosition: ['children', 0],
       changes: {
         __typename: 'Node',
@@ -360,7 +360,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -377,7 +377,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -393,7 +393,7 @@ describe('Test the basic operations', () => {
       INode
     > = {
       __typename: HDocCommandType.CHANGE_ELEMENT,
-      path: ['children', 0],
+      element: ['children', 0],
       changes: {
         __typename: 'Node',
         isChecked: true
@@ -442,7 +442,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -459,7 +459,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -475,7 +475,7 @@ describe('Test the basic operations', () => {
       INode
     > = {
       __typename: HDocCommandType.CHANGE_ELEMENT,
-      path: ['children', 0],
+      element: ['children', 0],
       changes: {
         __typename: 'Node',
         isChecked: true
@@ -506,7 +506,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -523,7 +523,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
@@ -556,7 +556,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: [],
+      parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
@@ -573,7 +573,7 @@ describe('Test the basic operations', () => {
     > = {
       __typename: HDocCommandType.INSERT_ELEMENT,
       position: ['children', 0],
-      parentPath: ['children', 0],
+      parent: ['children', 0],
       element: {
         __typename: 'Node',
         _id: 'Node2',
