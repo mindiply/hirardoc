@@ -16,7 +16,7 @@ export type MappedParentedTypesFields<MapsInterface> = {
     : never;
 }[keyof MapsInterface];
 
-type MappedParentedTypes<
+export type MappedParentedTypes<
   MapsInterface,
   U extends keyof MapsInterface = keyof MapsInterface
 > = {

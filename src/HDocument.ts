@@ -281,7 +281,8 @@ interface INextElementAndIdRetVal<
 export function idAndTypeForPath<MapsInterface, U extends keyof MapsInterface>(
   doc:
     | INormalizedDocument<MapsInterface, U>
-    | INormalizedMutableMapsDocument<MapsInterface, U>,
+    | INormalizedMutableMapsDocument<MapsInterface, U>
+    | IMutableDocument<MapsInterface, U>,
   path: Path<MapsInterface>
 ): {
   __typename: U;
