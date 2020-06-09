@@ -11,7 +11,9 @@ export {
   idAndTypeForPath,
   mutableDocument,
   pathForElementWithId,
-  isParentedMutableMap
+  isParentedMutableMap,
+  addElementToArrayReducer,
+  removeElementFromArrayReducer
 } from './HDocument';
 export {diff, diffInfoOf, diffElementInfo} from './HDiff';
 export {visitDocument} from './HVisit';

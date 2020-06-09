@@ -7,6 +7,7 @@ import {
   EntityReferences,
   HDocCommandType,
   HDocOperation,
+  IChangeElement,
   Id,
   IDocumentSchema,
   IElementId,
@@ -1189,6 +1190,89 @@ export const docReducer = <NorDoc extends INormalizedDocument<any, any>>(
     // silently eaten
   }
   return mutableDoc.updatedDocument();
+};
+
+export const removeElementFromArrayReducer = <
+  NorDoc extends INormalizedDocument<any, any>,
+  T
+>(
+  doc: NorDoc,
+  elementType: UOfNormDoc<NorDoc>,
+  elementId: Id,
+  arrayFieldName: AllMappedTypesFields<MapsOfNormDoc<NorDoc>>,
+  arrayElement: T
+): NorDoc => {
+  if (!hasMappedElement(doc, elementType, elementId)) return doc;
+  const element = mappedElement(doc, elementType, elementId) as IParentedId;
+  if (arrayFieldName in element) {
+    const elementArray = (element as any)[arrayFieldName] as T[];
+    const index = elementArray.indexOf(arrayElement);
+    if (index !== -1) {
+      const updatedArray = elementArray.slice();
+      updatedArray.splice(index, 1);
+      const updateChange: IChangeElement<
+        MapsOfNormDoc<NorDoc>,
+        UOfNormDoc<NorDoc>,
+        any
+      > = {
+        __typename: HDocCommandType.CHANGE_ELEMENT,
+        element: {
+          __typename: elementType,
+          _id: elementId
+        },
+        // @ts-expect-error
+        changes: {
+          [arrayFieldName]: updatedArray
+        }
+      };
+      return docReducer(doc, updateChange);
+    }
+  }
+  return doc;
+};
+
+export const addElementToArrayReducer = <
+  NorDoc extends INormalizedDocument<any, any>,
+  T
+>(
+  doc: NorDoc,
+  elementType: UOfNormDoc<NorDoc>,
+  elementId: Id,
+  arrayFieldName: AllMappedTypesFields<MapsOfNormDoc<NorDoc>>,
+  arrayElement: T,
+  insertIntoIndex = -1
+): NorDoc => {
+  if (!hasMappedElement(doc, elementType, elementId)) return doc;
+  const element = mappedElement(doc, elementType, elementId) as IParentedId;
+  if (arrayFieldName in element) {
+    const elementArray = (element as any)[arrayFieldName] as T[];
+    const index = elementArray.indexOf(arrayElement);
+    if (index !== -1) return doc;
+    const insertIndex =
+      insertIntoIndex < 0 || insertIntoIndex >= elementArray.length
+        ? elementArray.length
+        : insertIntoIndex;
+    const updatedArray = elementArray.slice();
+    updatedArray.splice(insertIndex, 0, arrayElement);
+    const updateChange: IChangeElement<
+      MapsOfNormDoc<NorDoc>,
+      UOfNormDoc<NorDoc>,
+      any
+    > = {
+      __typename: HDocCommandType.CHANGE_ELEMENT,
+      element: {
+        __typename: elementType,
+        _id: elementId
+      },
+      // @ts-expect-error
+      changes: {
+        [arrayFieldName]: updatedArray
+      }
+    };
+
+    return docReducer(doc, updateChange);
+  }
+  return doc;
 };
 
 export function idAndTypeOfChange<MapsInterface, U extends keyof MapsInterface>(

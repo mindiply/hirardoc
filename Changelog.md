@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 - Have a history of versions of a document with committing, branching
 and merging
 
+## [0.0.4] - 2020-06-09
+
+### Added
+- Added reducers to add and remove elements from an array
+field, *addElementToArrayReducer* and *removeElementFromArrayReducer*
 
 ## [0.0.3] - 2020-06-05
 
