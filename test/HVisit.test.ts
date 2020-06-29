@@ -3,7 +3,7 @@ import {
   testDocSchema,
   TestNormalizeDocument
 } from './testTypes';
-import {IVisitor, visitDocument} from '../src';
+import {DocumentVisitTraversal, IVisitor, visitDocument} from '../src';
 
 const testDoc: TestNormalizeDocument = {
   schema: testDocSchema,
@@ -68,64 +68,198 @@ const testDoc: TestNormalizeDocument = {
 const testVisit: IVisitor<
   ITestDocElementsMap,
   keyof ITestDocElementsMap,
-  {count: number}
+  {count: number; nodeIds: string[]}
 > = (doc, nodeType, nodeId, context) => {
   if (context) {
     context.count = context.count + 1;
+    context.nodeIds.push(`${nodeType}:${nodeId}`);
   }
 };
 
 describe('HVisit tests', () => {
   test('Normal visit', () => {
-    const context = {count: 0};
+    const context = {count: 0, nodeIds: []};
     visitDocument(testDoc, testVisit, {context});
     expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1',
+      'Node:node_1',
+      'Node:node_2',
+      'Node:node_3'
+    ]);
+  });
+
+  test('Normal visit - depth first', () => {
+    const context = {count: 0, nodeIds: []};
+    visitDocument(testDoc, testVisit, {
+      context,
+      traversal: DocumentVisitTraversal.DEPTH_FIRST
+    });
+    expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Node:node_3',
+      'Node:node_2',
+      'Node:node_1',
+      'Root:root_1'
+    ]);
   });
 
   test('Skip node types visit', () => {
-    const context = {count: 0};
+    const context = {count: 0, nodeIds: []};
     visitDocument(testDoc, testVisit, {
       context,
       typesToVisit: ['Node']
     });
     expect(context.count).toEqual(3);
+    expect(context.nodeIds).toEqual([
+      'Node:node_1',
+      'Node:node_2',
+      'Node:node_3'
+    ]);
     context.count = 0;
+    context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
       context,
       typesToVisit: ['Root']
     });
     expect(context.count).toEqual(1);
+    expect(context.nodeIds).toEqual(['Root:root_1']);
     context.count = 0;
+    context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
       context,
       typesToVisit: ['Root', 'Node']
     });
     expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1',
+      'Node:node_1',
+      'Node:node_2',
+      'Node:node_3'
+    ]);
+  });
+
+  test('Skip node types visit - depth first', () => {
+    const context = {count: 0, nodeIds: []};
+    visitDocument(testDoc, testVisit, {
+      context,
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      typesToVisit: ['Node']
+    });
+    expect(context.count).toEqual(3);
+    expect(context.nodeIds).toEqual([
+      'Node:node_3',
+      'Node:node_2',
+      'Node:node_1'
+    ]);
+    context.count = 0;
+    context.nodeIds = [];
+    visitDocument(testDoc, testVisit, {
+      context,
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      typesToVisit: ['Root']
+    });
+    expect(context.count).toEqual(1);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1'
+    ]);
+    context.count = 0;
+    context.nodeIds = [];
+    visitDocument(testDoc, testVisit, {
+      context,
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      typesToVisit: ['Root', 'Node']
+    });
+    expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Node:node_3',
+      'Node:node_2',
+      'Node:node_1',
+      'Root:root_1'
+    ]);
   });
 
   test('Skip traversal of types', () => {
-    const context = {count: 0};
+    const context = {count: 0, nodeIds: []};
     visitDocument(testDoc, testVisit, {
       context,
       typesToTraverse: ['Node']
     });
     expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1',
+      'Node:node_1',
+      'Node:node_2',
+      'Node:node_3'
+    ]);
     context.count = 0;
+    context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
       context,
       typesToVisit: ['Root']
     });
     expect(context.count).toEqual(1);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1'
+    ]);
     context.count = 0;
+    context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
       context,
       typesToVisit: ['Root', 'Node']
     });
     expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1',
+      'Node:node_1',
+      'Node:node_2',
+      'Node:node_3'
+    ]);
+  });
+
+  test('Skip traversal of types - depth first', () => {
+    const context = {count: 0, nodeIds: []};
+    visitDocument(testDoc, testVisit, {
+      context,
+      typesToTraverse: ['Node'],
+      traversal: DocumentVisitTraversal.DEPTH_FIRST
+    });
+    expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Node:node_3',
+      'Node:node_2',
+      'Node:node_1',
+      'Root:root_1'
+    ]);
+    context.count = 0;
+    context.nodeIds = [];
+    visitDocument(testDoc, testVisit, {
+      context,
+      typesToVisit: ['Root'],
+      traversal: DocumentVisitTraversal.DEPTH_FIRST
+    });
+    expect(context.count).toEqual(1);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1'
+    ]);
+    context.count = 0;
+    context.nodeIds = [];
+    visitDocument(testDoc, testVisit, {
+      context,
+      typesToVisit: ['Root', 'Node'],
+      traversal: DocumentVisitTraversal.DEPTH_FIRST
+    });
+    expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Node:node_3',
+      'Node:node_2',
+      'Node:node_1',
+      'Root:root_1'
+    ]);
   });
 
   test('Visit subtree', () => {
-    const context = {count: 0};
+    const context = {count: 0, nodeIds: []};
     visitDocument(testDoc, testVisit, {
       context,
       startElement: {
@@ -134,7 +268,13 @@ describe('HVisit tests', () => {
       }
     });
     expect(context.count).toEqual(3);
+    expect(context.nodeIds).toEqual([
+      'Node:node_1',
+      'Node:node_2',
+      'Node:node_3'
+    ]);
     context.count = 0;
+    context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
       context,
       startElement: {
@@ -143,7 +283,11 @@ describe('HVisit tests', () => {
       }
     });
     expect(context.count).toEqual(1);
+    expect(context.nodeIds).toEqual([
+      'Node:node_2'
+    ]);
     context.count = 0;
+    context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
       context,
       startElement: {
@@ -152,5 +296,60 @@ describe('HVisit tests', () => {
       }
     });
     expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Root:root_1',
+      'Node:node_1',
+      'Node:node_2',
+      'Node:node_3'
+    ]);
+  });
+
+  test('Visit subtree - depth first', () => {
+    const context = {count: 0, nodeIds: []};
+    visitDocument(testDoc, testVisit, {
+      context,
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      startElement: {
+        type: 'Node',
+        _id: 'node_1'
+      }
+    });
+    expect(context.count).toEqual(3);
+    expect(context.nodeIds).toEqual([
+      'Node:node_3',
+      'Node:node_2',
+      'Node:node_1'
+    ]);
+    context.count = 0;
+    context.nodeIds = [];
+    visitDocument(testDoc, testVisit, {
+      context,
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      startElement: {
+        type: 'Node',
+        _id: 'node_2'
+      }
+    });
+    expect(context.nodeIds).toEqual([
+      'Node:node_2'
+    ]);
+    expect(context.count).toEqual(1);
+    context.count = 0;
+    context.nodeIds = [];
+    visitDocument(testDoc, testVisit, {
+      context,
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      startElement: {
+        type: 'Root',
+        _id: 'root_1'
+      }
+    });
+    expect(context.count).toEqual(4);
+    expect(context.nodeIds).toEqual([
+      'Node:node_3',
+      'Node:node_2',
+      'Node:node_1',
+      'Root:root_1'
+    ]);
   });
 });
