@@ -240,8 +240,10 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
         mutableDoc.deleteElement(deleteElementCmd);
       }
     },
-    {},
-    DocumentVisitTraversal.DEPTH_FIRST
+    {
+      context: {},
+      traversal: DocumentVisitTraversal.DEPTH_FIRST
+    }
   );
   return mutableDoc.changes;
 }

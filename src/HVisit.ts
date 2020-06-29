@@ -4,7 +4,8 @@ import {
   IFieldEntityReference,
   INormalizedDocument,
   INormalizedMutableMapsDocument,
-  IVisitor
+  IVisitor,
+  VisitDocumentOptions
 } from './HTypes';
 import {isParentedId, mappedElement} from './HDocument';
 
@@ -29,23 +30,34 @@ export function visitDocument<
     | INormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   onNodeVisit: IVisitor<MapsInterface, U>,
-  context?: Context,
-  traversal = DocumentVisitTraversal.BREADTH_FIRST,
-  elementType?: U,
-  elementId?: Id
+  {
+    context,
+    traversal = DocumentVisitTraversal.BREADTH_FIRST,
+    startElement,
+    typesToTraverse,
+    typesToVisit
+  }: VisitDocumentOptions<MapsInterface, U, Context> = {}
 ) {
+  const elementType = startElement ? startElement.type : doc.rootType;
+  const elementId = startElement ? startElement._id : doc.rootId;
+  const traversableMap = typesToTraverse ? new Set(typesToTraverse) : undefined;
+  const visitableMap = typesToVisit ? new Set(typesToVisit) : undefined;
   for (
     const nodesToVisit: Array<[U, Id]> =
       traversal === DocumentVisitTraversal.BREADTH_FIRST
         ? breadthFirstNodes(
             doc,
-            elementType || doc.rootType,
-            elementId || doc.rootId
+            elementType,
+            elementId,
+            traversableMap,
+            visitableMap
           )
         : depthFirstNodes(
             doc,
-            elementType || doc.rootType,
-            elementId || doc.rootId
+            elementType,
+            elementId,
+            traversableMap,
+            visitableMap
           );
     nodesToVisit.length > 0;
 
@@ -64,6 +76,8 @@ function breadthFirstNodes<
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   nodeType: U,
   nodeId: Id,
+  typesToTraverse?: Set<U>,
+  typesToVisit?: Set<U>,
   nodesVisited: Set<string> = new Set()
 ): Array<[U, Id]> {
   const nodeUid = `${nodeType}:${nodeId}`;
@@ -74,26 +88,40 @@ function breadthFirstNodes<
   }
   const element = mappedElement(doc.maps, nodeType, nodeId);
   if (!isParentedId(element)) return [];
-  const nodeList: Array<[U, Id]> = [[nodeType, nodeId]];
+  const nodeList: Array<[U, Id]> =
+    typesToVisit && !typesToVisit.has(nodeType) ? [] : [[nodeType, nodeId]];
+  const childrenToVisit: Array<[U, Id]> = [];
   const nodeSchema = doc.schema.types[nodeType];
   for (const linkField in nodeSchema) {
     if (linkField === 'parentId') continue;
     const linkFieldProps = nodeSchema[linkField];
     if (Array.isArray(linkFieldProps)) {
       const {__schemaType} = linkFieldProps[0];
+      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
+        continue;
+      }
       const fieldIds = (element as any)[linkField] as Id[];
       for (const fieldId of fieldIds) {
-        nodeList.push([__schemaType, fieldId]);
+        childrenToVisit.push([__schemaType, fieldId]);
       }
     } else {
       const {__schemaType} = linkFieldProps as IFieldEntityReference<U>;
-      nodeList.push([__schemaType, (element as any)[linkField] as Id]);
+      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
+        continue;
+      }
+      childrenToVisit.push([__schemaType, (element as any)[linkField] as Id]);
     }
   }
-  const lengthWithChildren = nodeList.length;
-  for (let i = 1; i < lengthWithChildren; i++) {
+  for (const [childType, childId] of childrenToVisit) {
     nodeList.push(
-      ...breadthFirstNodes(doc, nodeList[i][0], nodeList[i][1], nodesVisited)
+      ...breadthFirstNodes(
+        doc,
+        childType,
+        childId,
+        typesToTraverse,
+        typesToVisit,
+        nodesVisited
+      )
     );
   }
   return nodeList;
@@ -108,6 +136,8 @@ function depthFirstNodes<
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   nodeType: U,
   nodeId: Id,
+  typesToTraverse?: Set<U>,
+  typesToVisit?: Set<U>,
   nodesVisited: Set<string> = new Set()
 ): Array<[U, Id]> {
   const nodeUid = `${nodeType}:${nodeId}`;
@@ -116,7 +146,8 @@ function depthFirstNodes<
   } else {
     nodesVisited.add(nodeUid);
   }
-  const nodeList: Array<[U, Id]> = [[nodeType, nodeId]];
+  const nodeList: Array<[U, Id]> =
+    typesToVisit && !typesToVisit.has(nodeType) ? [] : [[nodeType, nodeId]];
   const element = mappedElement(doc.maps, nodeType, nodeId);
   if (!isParentedId(element)) return [];
   const nodeSchema = doc.schema.types[nodeType];
@@ -125,19 +156,34 @@ function depthFirstNodes<
     const linkFieldProps = nodeSchema[linkField];
     if (Array.isArray(linkFieldProps)) {
       const {__schemaType} = linkFieldProps[0];
+      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
+        continue;
+      }
       const fieldIds = (element as any)[linkField] as Id[];
       for (const fieldId of fieldIds) {
         nodeList.unshift(
-          ...depthFirstNodes(doc, __schemaType, fieldId, nodesVisited)
+          ...depthFirstNodes(
+            doc,
+            __schemaType,
+            fieldId,
+            typesToTraverse,
+            typesToVisit,
+            nodesVisited
+          )
         );
       }
     } else {
       const {__schemaType} = linkFieldProps as IFieldEntityReference<U>;
+      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
+        continue;
+      }
       nodeList.unshift(
         ...depthFirstNodes(
           doc,
           __schemaType,
           (element as any)[linkField] as Id,
+          typesToTraverse,
+          typesToVisit,
           nodesVisited
         )
       );

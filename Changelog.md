@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 - Have a history of versions of a document with committing, branching
 and merging
 
+## [0.0.5] - 2020-06-29
+
+### Added
+- **visitDocument** now allows to traverse only certain
+node types, to cut visit time, and also to call the visitor
+function only on a subset of element types.
+
+### Changed
+- **visitDocument** now receives an option object rather
+than a long list of optional parameters, 
+
 ## [0.0.4] - 2020-06-09
 
 ### Added

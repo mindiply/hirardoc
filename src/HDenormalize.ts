@@ -61,8 +61,10 @@ export function denormalizeDocument<
         }
       }
     },
-    {},
-    DocumentVisitTraversal.DEPTH_FIRST
+    {
+      context: {},
+      traversal: DocumentVisitTraversal.DEPTH_FIRST
+    }
   );
   return nodes.get(elementUid(doc.rootType, doc.rootId))!;
 }

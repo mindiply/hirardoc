@@ -610,10 +610,14 @@ function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
         }
       }
     },
-    {},
-    DocumentVisitTraversal.DEPTH_FIRST,
-    elementType,
-    elementId
+    {
+      context: {},
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      startElement: {
+        type: elementType,
+        _id: elementId
+      }
+    }
   );
 
   const rebasingRootElement = mappedElement(
@@ -700,10 +704,14 @@ function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
       doc.maps[elementType].set(reIdedElement._id, reIdedElement);
       doc.maps[elementType].delete(elementId);
     },
-    {},
-    DocumentVisitTraversal.DEPTH_FIRST,
-    elementType,
-    elementId
+    {
+      context: {},
+      traversal: DocumentVisitTraversal.DEPTH_FIRST,
+      startElement: {
+        type: elementType,
+        _id: elementId
+      }
+    }
   );
 
   if (treeToRebase === ProcessingOrderFrom.left) {
@@ -924,8 +932,10 @@ function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
         elementsToDelete.push([nodeType, nodeId]);
       }
     },
-    {},
-    DocumentVisitTraversal.DEPTH_FIRST
+    {
+      context: {},
+      traversal: DocumentVisitTraversal.DEPTH_FIRST
+    }
   );
   for (const [nodeType, nodeId] of elementsToDelete) {
     const {onDeleteElement} = fnsForElementType(mergeCtx, nodeType);

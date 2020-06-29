@@ -984,3 +984,46 @@ export type MapsOfNormDoc<T> = T extends INormalizedDocument<
 export type UOfNormDoc<T> = T extends INormalizedDocument<any, infer U>
   ? U
   : never;
+
+/**
+ * Options that guide the traversal of a hierarchical document
+ */
+export interface VisitDocumentOptions<
+  MapsInterface,
+  U extends keyof MapsInterface = keyof MapsInterface,
+  Context = any
+> {
+  /**
+   * A context object that is passed to the visit function and allows
+   * to inject information external to the document within the visit function.
+   */
+  context?: Context;
+
+  /**
+   * Whether to traverese the tree breadth first of depth first
+   */
+  traversal?: DocumentVisitTraversal;
+
+  /**
+   * If set, visit only the subtree rooted at the element with the give
+   * type and id
+   */
+  startElement?: {
+    type: U;
+    _id: Id;
+  };
+
+  /**
+   * Whitelist of node types the visit function will be called on.
+   * This allows visiting a limited number of document nodes, while potentially
+   * traversing the entire document.
+   */
+  typesToVisit?: U[];
+
+  /**
+   * Whitelist of node types that will be traversed during the visit. This
+   * allows skipping visiting parts of the document tree that we are not
+   * interested about.
+   */
+  typesToTraverse?: U[];
+}
