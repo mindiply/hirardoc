@@ -1,17 +1,29 @@
 import {ILazyMutableMap, ILazyMutableMapDelta} from './HTypes';
 
+interface EqualityFn<T> {
+  (left: T, right: T): boolean;
+}
+
+const defaultEquals: EqualityFn<any> = (left: any, right: any) =>
+  left === right;
+
 export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
   protected readonly originalValuesMap: Map<K, V>;
   protected valuesMap: Map<K, V>;
   protected added: Map<K, V>;
   protected changed: Map<K, V>;
   protected deleted: Set<K>;
+  private equalityFn: EqualityFn<V>;
 
-  constructor(originalMap: Map<K, V>) {
+  constructor(
+    originalMap: Map<K, V>,
+    equalityFn: EqualityFn<V> = defaultEquals
+  ) {
     this.valuesMap = this.originalValuesMap = originalMap;
     this.added = new Map();
     this.changed = new Map();
     this.deleted = new Set();
+    this.equalityFn = equalityFn;
   }
 
   public hasChanged = (): boolean => {
@@ -22,7 +34,7 @@ export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
     if (
       this.valuesMap === this.originalValuesMap &&
       this.valuesMap.has(key) &&
-      this.originalValuesMap.get(key) === value
+      this.equalityFn(this.originalValuesMap.get(key)!, value)
     ) {
       return this;
     }
