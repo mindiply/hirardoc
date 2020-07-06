@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 - Have a history of versions of a document with committing, branching
 and merging
 
+## [0.0.6] -2020-07-09
+
+### Added
+- **LazyMap**'s constructor now accepts an optional equality
+  function to determine if an element being added is different
+  from the existing one
+
 ## [0.0.5] - 2020-06-29
 
 ### Added
