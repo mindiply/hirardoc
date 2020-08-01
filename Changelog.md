@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/).
 - Have a history of versions of a document with committing, branching
 and merging
 
+## [0.0.7] - 2020-08-01
+
+### Changes
+- Updated dependencies
+
 ## [0.0.6] -2020-07-09
 
 ### Added
