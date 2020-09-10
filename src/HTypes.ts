@@ -91,6 +91,7 @@ export interface ILazyMutableMap<K, V> {
   get: (key: K) => undefined | V;
   getOriginal: (key: K) => undefined | V;
   delete: (key: K) => boolean;
+  clear: () => void;
   keys: () => IterableIterator<K>;
   values: () => IterableIterator<V>;
   getMap: () => Map<K, V>;

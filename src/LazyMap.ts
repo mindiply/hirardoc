@@ -30,6 +30,17 @@ export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
     return this.originalValuesMap !== this.valuesMap;
   };
 
+  public clear = () => {
+    if (this.originalValuesMap.size === 0 && this.valuesMap.size === 0) {
+      return;
+    }
+    this.createCopyIfNeeded();
+    for (const key of this.originalValuesMap.keys()) {
+      this.deleted.add(key);
+    }
+    this.valuesMap.clear();
+  };
+
   public set = (key: K, value: V): LazyMutableMap<K, V> => {
     if (
       this.valuesMap === this.originalValuesMap &&
