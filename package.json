@@ -1,6 +1,6 @@
 {
   "name": "hirardoc",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Hierarchical normalised and offline first documents library",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
