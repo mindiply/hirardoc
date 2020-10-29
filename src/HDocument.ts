@@ -195,8 +195,6 @@ function isIParentedId<U>(obj: any): obj is IParentedId<U> {
   );
 }
 
-type GetLinkedElementType<U> = (elementId: Id) => U;
-
 /**
  * A Type link links an Element Type A to another element type U, where
  * element of types Y are either children or parent of the element of type A.
@@ -705,10 +703,7 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
    * @returns {U}
    * @private
    */
-  function _addElementIdToParentContext<
-    T extends IParentedId,
-    ParentType extends IParentedId
-  >(
+  function _addElementIdToParentContext<T extends IParentedId>(
     doc: IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
     parentType: UOfNormDoc<NorDoc>,
     parentId: Id,
@@ -1231,6 +1226,19 @@ export const removeElementFromArrayReducer = <
   return doc;
 };
 
+/**
+ * Creates a new document with an array field updated with the
+ * additional element(s) passed as parameters, optionally from a specific
+ * index.
+ *
+ * @param {NorDoc} doc
+ * @param {UOfNormDoc<NorDoc>} elementType
+ * @param {Id} elementId
+ * @param {AllMappedTypesFields<MapsOfNormDoc<NorDoc>>} arrayFieldName
+ * @param {T} arrayElement
+ * @param {number} insertIntoIndex
+ * @returns {NorDoc}
+ */
 export const addElementToArrayReducer = <
   NorDoc extends INormalizedDocument<any, any>,
   T
@@ -1239,21 +1247,26 @@ export const addElementToArrayReducer = <
   elementType: UOfNormDoc<NorDoc>,
   elementId: Id,
   arrayFieldName: AllMappedTypesFields<MapsOfNormDoc<NorDoc>>,
-  arrayElement: T,
+  arrayElement: T | T[],
   insertIntoIndex = -1
 ): NorDoc => {
   if (!hasMappedElement(doc, elementType, elementId)) return doc;
   const element = mappedElement(doc, elementType, elementId) as IParentedId;
   if (arrayFieldName in element) {
     const elementArray = (element as any)[arrayFieldName] as T[];
-    const index = elementArray.indexOf(arrayElement);
-    if (index !== -1) return doc;
+    const elementsToAdd = (Array.isArray(arrayElement)
+      ? arrayElement
+      : [arrayElement]
+    ).filter(el => elementArray.indexOf(el) === -1);
+    if (elementsToAdd.length === 0) {
+      return doc;
+    }
     const insertIndex =
       insertIntoIndex < 0 || insertIntoIndex >= elementArray.length
         ? elementArray.length
         : insertIntoIndex;
     const updatedArray = elementArray.slice();
-    updatedArray.splice(insertIndex, 0, arrayElement);
+    updatedArray.splice(insertIndex, 0, ...elementsToAdd);
     const updateChange: IChangeElement<
       MapsOfNormDoc<NorDoc>,
       UOfNormDoc<NorDoc>,
@@ -1269,7 +1282,6 @@ export const addElementToArrayReducer = <
         [arrayFieldName]: updatedArray
       }
     };
-
     return docReducer(doc, updateChange);
   }
   return doc;

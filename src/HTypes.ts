@@ -172,12 +172,7 @@ export enum HDocCommandType {
   MOVE_ELEMENT = 'MoveElementChange'
 }
 
-export interface IReplayableElementCommand<
-  MapsInterface,
-  U extends keyof MutableEntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
-> {
+export interface IReplayableElementCommand {
   __typename: HDocCommandType;
 }
 
@@ -191,7 +186,7 @@ export interface IInsertElement<
   MapsInterface,
   U extends keyof EntitiesMaps<MapsInterface>,
   T extends IParentedId<U, U>
-> extends IReplayableElementCommand<MapsInterface, U> {
+> extends IReplayableElementCommand {
   __typename: HDocCommandType.INSERT_ELEMENT;
   parent: Path<MapsInterface> | IElementId<U>;
   position: SubEntityPathElement<MapsInterface>;
@@ -202,7 +197,7 @@ export interface IChangeElement<
   MapsInterface,
   U extends keyof EntitiesMaps<MapsInterface>,
   T extends IParentedId<U, U>
-> extends IReplayableElementCommand<MapsInterface, U> {
+> extends IReplayableElementCommand {
   __typename: HDocCommandType.CHANGE_ELEMENT;
   element: Path<MapsInterface> | IElementId<U>;
   changes: Partial<T> & Pick<T, '__typename'>;
@@ -213,7 +208,7 @@ export interface IDeleteElement<
   U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
     MapsInterface
   >
-> extends IReplayableElementCommand<MapsInterface, U> {
+> extends IReplayableElementCommand {
   __typename: HDocCommandType.DELETE_ELEMENT;
   element: Path<MapsInterface> | IElementId<U>;
 }
@@ -222,7 +217,7 @@ export interface IMoveElement<
   MapsInterface,
   U extends keyof EntitiesMaps<MapsInterface>,
   T extends IParentedId<U, U>
-> extends IReplayableElementCommand<MapsInterface, U> {
+> extends IReplayableElementCommand {
   __typename: HDocCommandType.MOVE_ELEMENT;
   element: Path<MapsInterface> | IElementId<U>;
   toParent: Path<MapsInterface> | IElementId<U>;
@@ -503,7 +498,7 @@ export interface IValueConflict<T> {
  * offered as an explanation to humans of what has happened so they
  * can perfect the merge if so wished.
  */
-export interface IPositionConflict<MapsInterface> {
+export interface IPositionConflict {
   /**
    * Ids of all the copies of the element in the merged tree
    * (usually one)
@@ -525,13 +520,13 @@ export type ElementInfoConflicts<S> = {
   [F in keyof S]?: IValueConflict<S[F]>;
 };
 
-export interface IElementConflicts<MapsInterface, S> {
+export interface IElementConflicts<S> {
   infoConflicts?: ElementInfoConflicts<S>;
-  positionConflicts?: IPositionConflict<MapsInterface>;
+  positionConflicts?: IPositionConflict;
 }
 
 export type ConflictMapKeys<MapsInterface, U extends keyof MapsInterface> = {
-  [F in U]: MapsInterface[F] extends Map<Id, infer S> ? F : never;
+  [F in U]: MapsInterface[F] extends Map<Id, any> ? F : never;
 }[U];
 
 /**
@@ -541,7 +536,7 @@ export type ConflictMapKeys<MapsInterface, U extends keyof MapsInterface> = {
  */
 export type ConflictsMap<MapsInterface, U extends keyof MapsInterface> = {
   [F in U]: MapsInterface[F] extends Map<Id, infer S>
-    ? Map<Id, IElementConflicts<MapsInterface, S>>
+    ? Map<Id, IElementConflicts<S>>
     : never;
 };
 

@@ -297,7 +297,6 @@ const defaultHooks: IMergeHooks<NDoc> = {
       );
       if (mergeRes.conflicts) {
         const elementConflicts: IElementConflicts<
-          MapsOfNormDoc<NDoc>,
           MapsOfNormDoc<NDoc>[typeof elementType]
         > = mergeContext.conflicts[elementType].get(base._id) || {};
         mergeContext.conflicts[elementType].set(base._id, {
@@ -449,10 +448,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
  * @param {MergeOverridesMap<MapsInterface, U, ElementType>} options
  * @returns {II3MergeResult<MapsInterface, U>}
  */
-export function threeWayMerge<
-  NorDoc extends INormalizedDocument<any, any>,
-  ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
->(
+export function threeWayMerge<NorDoc extends INormalizedDocument<any, any>>(
   baseDoc: NorDoc,
   myDoc: NorDoc,
   theirDoc: NorDoc,

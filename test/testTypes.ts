@@ -89,6 +89,7 @@ export const emptyTestDocument = (): TestNormalizeDocument => ({
 });
 
 function removeNodeParent(node: INodeNode) {
+  // @ts-expect-error
   delete node.parent;
   for (const child of node.children) {
     removeNodeParent(child);
