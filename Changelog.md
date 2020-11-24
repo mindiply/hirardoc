@@ -3,12 +3,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
-## [Unreleased]
+## [0.0.9] - 2020-11-24
 
 ### Added
-
 - Have a history of versions of a document with committing, branching
 and merging
+
+### Fixes
+- Removing and element removes the entire subtree, rather than
+leaving dangling references in the maps
 
 ## [0.0.7] - 2020-08-01
 

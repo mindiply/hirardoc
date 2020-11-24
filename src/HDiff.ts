@@ -17,15 +17,10 @@ import {
   MapsOfNormDoc,
   UOfNormDoc
 } from './HTypes';
-import {
-  hasMappedElement,
-  isParentedId,
-  mappedElement,
-  mutableDocument,
-  pathForElementWithId
-} from './HDocument';
+import {mutableDocument, pathForElementWithId} from './HDocument';
 import {isEqual, omit} from 'lodash';
 import {visitDocument} from './HVisit';
+import {hasMappedElement, isParentedId, mappedElement} from './HUtils';
 
 /**
  * Returns a list of HDocOperations that if applied

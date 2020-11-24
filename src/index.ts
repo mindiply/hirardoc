@@ -1,17 +1,11 @@
 export * from './HTypes';
 export {
   docReducer,
-  isParentedId,
-  mappedElement,
-  isParentedMap,
-  isId,
   clearedNormalizedDocument,
   cloneNormalizedDocument,
-  hasMappedElement,
   idAndTypeForPath,
   mutableDocument,
   pathForElementWithId,
-  isParentedMutableMap,
   addElementToArrayReducer,
   removeElementFromArrayReducer
 } from './HDocument';
@@ -20,3 +14,9 @@ export {visitDocument} from './HVisit';
 export {threeWayMerge, mergeElementInfo} from './HMerge3';
 export {denormalizeDocument} from './HDenormalize';
 export {LazyMutableMap} from './LazyMap';
+export {mappedElement} from './HUtils';
+export {hasMappedElement} from './HUtils';
+export {isParentedMap} from './HUtils';
+export {isParentedId} from './HUtils';
+export {isId} from './HUtils';
+export {isParentedMutableMap} from './HUtils';

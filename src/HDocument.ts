@@ -3,6 +3,7 @@ import {v1 as uuid} from 'uuid';
 import {LazyMutableMap} from './LazyMap';
 import {
   AllMappedTypesFields,
+  DocumentVisitTraversal,
   EntitiesMaps,
   EntityReferences,
   HDocCommandType,
@@ -13,7 +14,6 @@ import {
   IElementId,
   IFieldEntityReference,
   IInsertElement,
-  ILazyMutableMap,
   IMoveElement,
   IMutableDocument,
   INormalizedDocument,
@@ -25,72 +25,17 @@ import {
   SubEntityPathElement,
   UOfNormDoc
 } from './HTypes';
-
-export function isId(obj: any): obj is Id {
-  return typeof obj === 'number' || (obj !== '' && typeof obj === 'string');
-}
-
-export function isElementId(obj: any): obj is IElementId<any> {
-  return (
-    typeof obj === 'object' &&
-    isId(obj._id) &&
-    typeof obj.__typename === 'string'
-  );
-}
-
-export function isNullableId(obj: any): obj is Id | null {
-  return obj === null || isId(obj);
-}
-
-export function isParentedId(obj: any): obj is IParentedId {
-  return (
-    typeof obj === 'object' &&
-    isId(obj._id) &&
-    typeof obj.__typename === 'string' &&
-    (obj.parentType === null || typeof obj.parentType === 'string') &&
-    (obj.parentId === null || isId(obj.parentId))
-  );
-}
-
-export function isParentedMap(obj: any): obj is Map<Id, IParentedId> {
-  if (obj && obj instanceof Map) {
-    if (obj.size === 0) return true;
-    for (const [key, val] of obj.entries()) {
-      if (!(isId(key) && isParentedId(val))) {
-        return false;
-      }
-    }
-    return true;
-  }
-  return false;
-}
-
-export function isEntitiesMap(obj: any): obj is EntitiesMaps<any, any> {
-  if (typeof obj !== 'object') return false;
-  let i = 0;
-  for (const entityType of Object.keys(obj)) {
-    if (!isParentedMap(obj[entityType])) {
-      return false;
-    }
-    i++;
-  }
-  return i > 0;
-}
-
-function isSubEntityPathElement(obj: any): obj is SubEntityPathElement<any> {
-  if (typeof obj === 'string') {
-    return true;
-  }
-  if (
-    Array.isArray(obj) &&
-    obj.length === 2 &&
-    typeof obj[0] === 'string' &&
-    typeof obj[1] === 'number'
-  ) {
-    return true;
-  }
-  return false;
-}
+import {
+  hasMappedElement,
+  isElementId,
+  isId,
+  isIParentedId,
+  isParentedMap,
+  isSchemaReference,
+  isSubEntityPathElement,
+  mappedElement
+} from './HUtils';
+import {visitDocument} from './HVisit';
 
 /**
  * Creates a shallow clone of the document. The maps are new objects,
@@ -171,28 +116,6 @@ export function clearedNormalizedDocument<
     }
   }
   return clone;
-}
-
-function isSchemaReference(obj: any): obj is IFieldEntityReference<any> {
-  return Boolean(
-    obj &&
-      typeof obj === 'object' &&
-      '__schemaType' in obj &&
-      obj.__schemaType &&
-      typeof obj.__schemaType === 'string'
-  );
-}
-
-function isIParentedId<U>(obj: any): obj is IParentedId<U> {
-  return (
-    obj &&
-    typeof obj === 'object' &&
-    obj._id !== undefined &&
-    isId(obj._id) &&
-    (typeof obj.parentId === 'undefined' ||
-      isId(obj.parentId) ||
-      obj.parentId === null)
-  );
 }
 
 /**
@@ -499,9 +422,7 @@ function createTypesMapForSchema<
     for (const fieldName in typeSettings) {
       if (fieldName === 'parentId') continue;
       const fieldValue = typeSettings[fieldName];
-      const childFieldSettings = Array.isArray(fieldValue)
-        ? fieldValue[0]
-        : fieldValue;
+      const childFieldSettings = fieldValue[0];
       const existingSettings =
         childMap.get(childFieldSettings.__schemaType) || {};
       childMap.set(childFieldSettings.__schemaType, {
@@ -517,9 +438,7 @@ function createTypesMapForSchema<
     for (const fieldName in typeSettings) {
       if (fieldName === 'parentId') continue;
       const fieldSettingsValue = typeSettings[fieldName];
-      const childFieldSettings = Array.isArray(fieldSettingsValue)
-        ? fieldSettingsValue[0]
-        : fieldSettingsValue;
+      const childFieldSettings = fieldSettingsValue[0];
       typeEntry.children[childFieldSettings.__schemaType] = {
         type: childFieldSettings.__schemaType,
         field: (fieldName as any) as AllMappedTypesFields<MapsInterface>,
@@ -954,7 +873,23 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
       if (toDeleteElement.parentId) {
         _removeElementFromParentContext(this, __typename, _id);
       }
-      this.maps[__typename].delete(toDeleteElement._id);
+      const elementsToDelete: IElementId<UOfNormDoc<NorDoc>>[] = [];
+      visitDocument(
+        this,
+        (_, nodeType, nodeId) => {
+          elementsToDelete.push({__typename: nodeType, _id: nodeId});
+        },
+        {
+          traversal: DocumentVisitTraversal.DEPTH_FIRST,
+          startElement: {
+            type: __typename,
+            _id
+          }
+        }
+      );
+      for (const elementToDeleteId of elementsToDelete) {
+        this.maps[elementToDeleteId.__typename].delete(elementToDeleteId._id);
+      }
       this.changes.push(
         isElementId(deleteCommand.element)
           ? deleteCommand
@@ -1035,139 +970,6 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
     }
   };
   return mutableDoc;
-}
-
-/**
- * Checks if the object passed as parameter is a mutable
- * lazy map with Ids as keys and IParentedId subtypes as
- * values.
- *
- * @param obj
- * @returns {obj is ILazyMutableMap<Id, IParentedId>}
- */
-export function isParentedMutableMap(
-  obj: any
-): obj is ILazyMutableMap<Id, IParentedId> {
-  if (obj && obj instanceof LazyMutableMap) {
-    if (obj.getMap().size === 0) return true;
-    for (const [key, val] of obj.getMap().entries()) {
-      if (!(isId(key) && isParentedId(val))) {
-        return false;
-      }
-    }
-    return true;
-  }
-  return false;
-}
-
-export function isMutableEntitiesMap(
-  obj: any
-): obj is MutableEntitiesMaps<any, any> {
-  if (typeof obj !== 'object') return false;
-  const fieldNames = Object.keys(obj);
-  if (fieldNames.length < 1) return false;
-  for (const fieldName of fieldNames) {
-    if (!isParentedMutableMap(obj[fieldName])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
- * Checks if an element of type elementType with id elementId is in the document
- * hierarchy.
- *
- * @param {EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>} docOrMaps
- * @param {U} elementType
- * @param {Id} elementId
- * @returns {boolean}
- */
-export function hasMappedElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
->(
-  docOrMaps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>
-    | INormalizedDocument<MapsInterface, U>
-    | IMutableDocument<MapsInterface, U>,
-  elementType: U,
-  elementId: Id
-): boolean {
-  let maps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>;
-  if (isEntitiesMap(docOrMaps) || isMutableEntitiesMap(docOrMaps)) {
-    maps = docOrMaps;
-  } else if (
-    isEntitiesMap((docOrMaps as any).maps) ||
-    isMutableEntitiesMap((docOrMaps as any).maps)
-  ) {
-    maps = (docOrMaps as any).maps;
-  } else {
-    return false;
-  }
-  if (!(elementType in maps)) {
-    return false;
-  }
-  const typeMap: ILazyMutableMap<Id, any> | Map<Id, any> = maps[elementType];
-  return typeMap.has(elementId);
-}
-
-/**
- * Given a map of entities or mutable entities, returns the element that corresponds to the type
- * and id provided as parameter.
- *
- * If the type requested is not mapped, a type error is thrown. If no element with the requested _id is found,
- * a reference error is thrown.
- *
- * @param {EntitiesMaps<MapsInterface, U> | MutableEntitiesMaps<MapsInterface, U>} maps
- * @param {U} elementType
- * @param {Id} elementId
- * @returns {EntitiesMaps<MapsInterface>[U] extends Map<Id, infer T> ? T : never}
- */
-export function mappedElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
->(
-  docOrMaps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>
-    | INormalizedDocument<MapsInterface, U>
-    | IMutableDocument<MapsInterface, U>,
-  elementType: U,
-  elementId: Id
-): EntitiesMaps<MapsInterface>[U] extends Map<Id, infer T> ? T : never {
-  let maps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>;
-  if (isEntitiesMap(docOrMaps) || isMutableEntitiesMap(docOrMaps)) {
-    maps = docOrMaps;
-  } else if (
-    isEntitiesMap((docOrMaps as any).maps) ||
-    isMutableEntitiesMap((docOrMaps as any).maps)
-  ) {
-    maps = (docOrMaps as any).maps;
-  } else {
-    maps = {} as
-      | EntitiesMaps<MapsInterface, U>
-      | MutableEntitiesMaps<MapsInterface, U>;
-  }
-  if (!(elementType in maps)) {
-    throw new TypeError(`Element type ${elementType} not found`);
-  }
-  const typeMap: ILazyMutableMap<Id, any> | Map<Id, any> = maps[elementType];
-  if (!typeMap.has(elementId)) {
-    throw new ReferenceError(
-      `Referential integrity: element ${elementType}.${elementId} not found`
-    );
-  }
-  return typeMap.get(elementId)!;
 }
 
 export const docReducer = <NorDoc extends INormalizedDocument<any, any>>(

@@ -15,6 +15,7 @@ import {
   IInsertElement,
   IMoveElement,
   isParentedMutableMap,
+  mappedElement,
   mutableDocument
 } from '../src';
 
@@ -128,6 +129,115 @@ describe('Test the basic operations', () => {
     expect(
       denormalizeDocument(replayMutableDoc.updatedDocument())
     ).toMatchObject(expectedRootNode);
+  });
+
+  test('Removing a parent node, removes its descendants as well', () => {
+    const emptyDoc = emptyTestDocument();
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: ['children', 0],
+      parent: [],
+      element: {
+        __typename: 'Node',
+        _id: 'Node1',
+        children: [],
+        isChecked: false,
+        text: 'firstNode'
+      }
+    };
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement(addNodeCmd);
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: ['children', 0],
+      parent: ['children', 0],
+      element: {
+        __typename: 'Node',
+        _id: 'Node2',
+        children: [],
+        isChecked: false,
+        text: 'childNode'
+      }
+    };
+    mutableDoc.insertElement(addNodeCmd2);
+    const deleteParentNodeCmd: IDeleteElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap
+    > = {
+      __typename: HDocCommandType.DELETE_ELEMENT,
+      element: {
+        __typename: 'Node',
+        _id: 'Node1'
+      }
+    };
+    mutableDoc.deleteElement(deleteParentNodeCmd);
+    const updatedDoc = mutableDoc.updatedDocument();
+    expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node1')).toBe(false);
+    expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node2')).toBe(false);
+  });
+
+  test('Removing a child node keeps the parent', () => {
+    const emptyDoc = emptyTestDocument();
+    const addNodeCmd: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: ['children', 0],
+      parent: [],
+      element: {
+        __typename: 'Node',
+        _id: 'Node1',
+        children: [],
+        isChecked: false,
+        text: 'firstNode'
+      }
+    };
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement(addNodeCmd);
+    const addNodeCmd2: IInsertElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap,
+      INode
+    > = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: ['children', 0],
+      parent: ['children', 0],
+      element: {
+        __typename: 'Node',
+        _id: 'Node2',
+        children: [],
+        isChecked: false,
+        text: 'childNode'
+      }
+    };
+    mutableDoc.insertElement(addNodeCmd2);
+    const deleteParentNodeCmd: IDeleteElement<
+      ITestDocElementsMap,
+      keyof ITestDocElementsMap
+    > = {
+      __typename: HDocCommandType.DELETE_ELEMENT,
+      element: {
+        __typename: 'Node',
+        _id: 'Node2'
+      }
+    };
+    mutableDoc.deleteElement(deleteParentNodeCmd);
+    const updatedDoc = mutableDoc.updatedDocument();
+    expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node1')).toBe(true);
+    expect(
+      mappedElement(updatedDoc.maps, 'Node', 'Node1').children.length
+    ).toBe(0);
+    expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node2')).toBe(false);
   });
 
   test('Added node and its child', () => {

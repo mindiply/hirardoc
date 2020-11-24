@@ -7,7 +7,7 @@ import {
   IParentedNode
 } from './HTypes';
 import {visitDocument} from './HVisit';
-import {mappedElement} from './HDocument';
+import {mappedElement} from './HUtils';
 
 const elementUid = <U>(elementType: U, elementId: Id) =>
   `${elementType}:${elementId}`;

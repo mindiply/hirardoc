@@ -205,9 +205,7 @@ export interface IChangeElement<
 
 export interface IDeleteElement<
   MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
+  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
 > extends IReplayableElementCommand {
   __typename: HDocCommandType.DELETE_ELEMENT;
   element: Path<MapsInterface> | IElementId<U>;
@@ -251,9 +249,7 @@ export type EntityReferences<T> = {
  */
 export type IDocumentSchema<
   MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
+  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
 > = {types: {[P in U]: EntityReferences<U>}} & {
   documentType: string;
   rootType: U;
@@ -265,9 +261,7 @@ export type IDocumentSchema<
  */
 export interface INormalizedMutableMapsDocument<
   MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >
+  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
 > {
   /**
    * The schema that declares how elements are linked within
@@ -304,9 +298,7 @@ export interface INormalizedMutableMapsDocument<
  */
 export interface IReplayChangesDocument<
   MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >,
+  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>,
   NDoc extends INormalizedDocument<MapsInterface, U> = INormalizedDocument<
     MapsInterface,
     U
@@ -362,9 +354,7 @@ export interface IReplayChangesDocument<
  */
 export interface IMutableDocument<
   MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<
-    MapsInterface
-  >,
+  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>,
   NDoc extends INormalizedDocument<MapsInterface, U> = INormalizedDocument<
     MapsInterface,
     U

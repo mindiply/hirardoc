@@ -7,12 +7,8 @@ import {
 } from 'node-diff3';
 import {
   cloneNormalizedDocument,
-  hasMappedElement,
   idAndTypeForPath,
   idAndTypeOfChange,
-  isNullableId,
-  isParentedId,
-  mappedElement,
   mutableDocument,
   parentToChildFieldName,
   pathForElementWithId
@@ -53,6 +49,12 @@ import {
 } from './HTypes';
 import {visitDocument} from './HVisit';
 import {diff, diffElementInfo} from './HDiff';
+import {
+  hasMappedElement,
+  isNullableId,
+  isParentedId,
+  mappedElement
+} from './HUtils';
 
 type DataValue = string | Date | number | boolean;
 
@@ -301,9 +303,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
         > = mergeContext.conflicts[elementType].get(base._id) || {};
         mergeContext.conflicts[elementType].set(base._id, {
           ...elementConflicts,
-          infoConflicts: mergeRes.conflicts as MapsOfNormDoc<
-            NDoc
-          >[typeof elementType]
+          infoConflicts: mergeRes.conflicts as MapsOfNormDoc<NDoc>[typeof elementType]
         });
       }
       elementInfoDiff = diffElementInfo(

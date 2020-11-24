@@ -1,13 +1,12 @@
 import {
   DocumentVisitTraversal,
   Id,
-  IFieldEntityReference,
   INormalizedDocument,
   INormalizedMutableMapsDocument,
   IVisitor,
   VisitDocumentOptions
 } from './HTypes';
-import {isParentedId, mappedElement} from './HDocument';
+import {isParentedId, mappedElement} from './HUtils';
 
 /**
  * Traversal of a normalized document, calling
@@ -94,22 +93,14 @@ function breadthFirstNodes<
   const nodeSchema = doc.schema.types[nodeType];
   for (const linkField in nodeSchema) {
     if (linkField === 'parentId') continue;
-    const linkFieldProps = nodeSchema[linkField];
-    if (Array.isArray(linkFieldProps)) {
-      const {__schemaType} = linkFieldProps[0];
-      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
-        continue;
-      }
-      const fieldIds = (element as any)[linkField] as Id[];
-      for (const fieldId of fieldIds) {
-        childrenToVisit.push([__schemaType, fieldId]);
-      }
-    } else {
-      const {__schemaType} = linkFieldProps as IFieldEntityReference<U>;
-      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
-        continue;
-      }
-      childrenToVisit.push([__schemaType, (element as any)[linkField] as Id]);
+    const linkFieldProps = nodeSchema[linkField][0];
+    const {__schemaType} = linkFieldProps;
+    if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
+      continue;
+    }
+    const fieldIds = (element as any)[linkField] as Id[];
+    for (const fieldId of fieldIds) {
+      childrenToVisit.push([__schemaType, fieldId]);
     }
   }
   for (const [childType, childId] of childrenToVisit) {
@@ -153,35 +144,18 @@ function depthFirstNodes<
   const nodeSchema = doc.schema.types[nodeType];
   for (const linkField in nodeSchema) {
     if (linkField === 'parentId') continue;
-    const linkFieldProps = nodeSchema[linkField];
-    if (Array.isArray(linkFieldProps)) {
-      const {__schemaType} = linkFieldProps[0];
-      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
-        continue;
-      }
-      const fieldIds = (element as any)[linkField] as Id[];
-      for (const fieldId of fieldIds) {
-        nodeList.unshift(
-          ...depthFirstNodes(
-            doc,
-            __schemaType,
-            fieldId,
-            typesToTraverse,
-            typesToVisit,
-            nodesVisited
-          )
-        );
-      }
-    } else {
-      const {__schemaType} = linkFieldProps as IFieldEntityReference<U>;
-      if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
-        continue;
-      }
+    const linkFieldProps = nodeSchema[linkField][0];
+    const {__schemaType} = linkFieldProps;
+    if (typesToTraverse && !typesToTraverse.has(__schemaType)) {
+      continue;
+    }
+    const fieldIds = (element as any)[linkField] as Id[];
+    for (const fieldId of fieldIds) {
       nodeList.unshift(
         ...depthFirstNodes(
           doc,
           __schemaType,
-          (element as any)[linkField] as Id,
+          fieldId,
           typesToTraverse,
           typesToVisit,
           nodesVisited
