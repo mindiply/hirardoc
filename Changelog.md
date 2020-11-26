@@ -3,6 +3,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## [0.0.10] - 2020-11-26
+
+### Added
+- **generateNewId** creates a new Id and can be used to pre-assign ids
+to elements to be added to a HDocument.
+
 ## [0.0.9] - 2020-11-24
 
 ### Added

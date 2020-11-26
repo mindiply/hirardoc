@@ -1,3 +1,4 @@
+import {v1 as uuid} from 'uuid';
 import {
   EntitiesMaps,
   Id,
@@ -230,3 +231,10 @@ export function mappedElement<
   }
   return typeMap.get(elementId)!;
 }
+
+/**
+ * Generates a unique id to assign to an element.
+ *
+ * @returns {Id}
+ */
+export const generateNewId = (): Id => uuid();

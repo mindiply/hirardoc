@@ -1,5 +1,4 @@
 import {isEqual} from 'lodash';
-import {v1 as uuid} from 'uuid';
 import {LazyMutableMap} from './LazyMap';
 import {
   AllMappedTypesFields,
@@ -26,6 +25,7 @@ import {
   UOfNormDoc
 } from './HTypes';
 import {
+  generateNewId,
   hasMappedElement,
   isElementId,
   isId,
@@ -758,7 +758,7 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
       const {__typename: parentType, _id: parentId} = isElementId(parent)
         ? parent
         : this.idAndTypeForPath(parent);
-      const elementId = element._id ? element._id : uuid();
+      const elementId = element._id ? element._id : generateNewId();
       const newElement = {
         ...element,
         _id: elementId

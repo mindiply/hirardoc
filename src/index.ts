@@ -14,9 +14,12 @@ export {visitDocument} from './HVisit';
 export {threeWayMerge, mergeElementInfo} from './HMerge3';
 export {denormalizeDocument} from './HDenormalize';
 export {LazyMutableMap} from './LazyMap';
-export {mappedElement} from './HUtils';
-export {hasMappedElement} from './HUtils';
-export {isParentedMap} from './HUtils';
-export {isParentedId} from './HUtils';
-export {isId} from './HUtils';
-export {isParentedMutableMap} from './HUtils';
+export {
+  mappedElement,
+  hasMappedElement,
+  generateNewId,
+  isParentedMap,
+  isParentedId,
+  isId,
+  isParentedMutableMap
+} from './HUtils';

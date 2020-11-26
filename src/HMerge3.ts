@@ -1,4 +1,3 @@
-import {v1 as uuid} from 'uuid';
 import {
   diff3Merge,
   IMergeConflictRegion,
@@ -50,6 +49,7 @@ import {
 import {visitDocument} from './HVisit';
 import {diff, diffElementInfo} from './HDiff';
 import {
+  generateNewId,
   hasMappedElement,
   isNullableId,
   isParentedId,
@@ -588,7 +588,7 @@ function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
     document,
     (doc, nodeType, nodeId) => {
       const nodeUid = getElementUid(nodeType, nodeId);
-      const newId = uuid();
+      const newId = generateNewId();
       if (!newIds.has(nodeUid)) {
         newIds.set(nodeUid, newId);
         if (treeToRebase === ProcessingOrderFrom.left) {
