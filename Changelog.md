@@ -3,6 +3,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+
+## [0.0.11] - 2021-01-19
+
+### Fixes
+- Changed the implementation of *isParentedMap* and *isParentedMutableMap* that
+were a performance bottleneck.
+
 ## [0.0.10] - 2020-11-26
 
 ### Added
