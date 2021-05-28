@@ -1,6 +1,10 @@
 import {
   AllMappedTypesFields,
+  ArrayChange,
+  ArrayKeepElement,
+  DiffArrayResult,
   DocumentVisitTraversal,
+  EqualFn,
   HDocCommandType,
   HDocOperation,
   IChangeElement,
@@ -20,7 +24,7 @@ import {
 import {mutableDocument, pathForElementWithId} from './HDocument';
 import {isEqual, omit} from 'lodash';
 import {visitDocument} from './HVisit';
-import {hasMappedElement, isParentedId, mappedElement} from './HUtils';
+import {assert, hasMappedElement, isParentedId, mappedElement} from './HUtils';
 
 /**
  * Returns a list of HDocOperations that if applied
@@ -146,7 +150,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
                   ),
                   toParent: pathForElementWithId(mutableDoc, nodeType, nodeId),
                   toPosition: [
-                    (linkFieldName as any) as AllMappedTypesFields<
+                    linkFieldName as any as AllMappedTypesFields<
                       MapsOfNormDoc<NorDoc>
                     >,
                     i
@@ -182,7 +186,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
                   __typename: HDocCommandType.INSERT_ELEMENT,
                   parent: nodePath,
                   position: [
-                    (linkFieldName as any) as AllMappedTypesFields<
+                    linkFieldName as any as AllMappedTypesFields<
                       MapsOfNormDoc<NorDoc>
                     >,
                     i
@@ -266,10 +270,7 @@ export function diffElementInfo<
   laterEl: T
 ): Partial<T> {
   const infoDiff: Partial<T> = {};
-  const elementLinkedFields = schema.types[elementType];
-  if (!elementLinkedFields) {
-    return infoDiff;
-  }
+  const elementLinkedFields = schema.types[elementType] || {};
   const fieldsChecked: Set<string> = new Set();
   for (const fieldName in baseEl) {
     if (fieldName === 'parentId' || fieldName in elementLinkedFields) {
@@ -320,4 +321,258 @@ export function diffInfoOf<
   const baseEl = mappedElement(baseDoc.maps, elementType, elementId) as T;
   const laterEl = mappedElement(laterDoc.maps, elementType, elementId) as T;
   return diffElementInfo(baseDoc.schema, elementType, baseEl, laterEl);
+}
+
+export const defaultEquals = (a: any, b: any) => a === b;
+
+interface BaseElementStatus<T> {
+  element: T;
+  originalIndex: number;
+  finalIndex: number | null;
+  filteredIndex: number;
+  currentIndex: number;
+}
+
+/**
+ * Creates a diff between two arrays, returning a list of change operations
+ * that would bring the base array to the later array.
+ *
+ * Elements are considered equal based on the equalsFn parameter, that by
+ * default uses the === boolean operator. You can use equals from lodash for
+ * deep compares, for instance.
+ *
+ * The diff result returns both the list of sequential changes in the changes
+ * member, and an array that has the same number of elements as the base array.
+ * Each element shows what happened to the base element in the later array:
+ * kept in the same position, moved to the left of the array or deleted.
+ *
+ * @param {T[]} base
+ * @param {T[]} later
+ * @param {EqualFn} equalsFn
+ * @returns {DiffArrayResult<T>}
+ */
+export function diffArray<T>(
+  base: T[],
+  later: T[],
+  equalsFn: EqualFn = defaultEquals
+): DiffArrayResult<T> {
+  const elementChanges: Array<null | ArrayKeepElement | ArrayChange<T>> = [];
+  const changes: ArrayChange<T>[] = [];
+
+  const baseElementsQueue: BaseElementStatus<T>[] = [];
+  const existingElementsIndexes: Map<number, number> = new Map();
+
+  // 1. Find elements deleted from base.
+  for (let i = 0; i < base.length; i++) {
+    const laterIndex = later.findIndex(laterEl => equalsFn(laterEl, base[i]));
+    if (laterIndex !== -1) {
+      existingElementsIndexes.set(laterIndex, i);
+      baseElementsQueue.push({
+        element: base[i],
+        originalIndex: i,
+        finalIndex: laterIndex,
+        currentIndex: baseElementsQueue.length,
+        filteredIndex: -1
+      });
+      elementChanges.push({
+        __typename: 'KeepElement',
+        elIndex: i
+      });
+    } else {
+      changes.push({
+        __typename: 'DeleteElement',
+        elIndex: i
+      });
+      elementChanges.push(changes[changes.length - 1]);
+    }
+  }
+
+  // 2. Move the remaining elements after deletions until the order respect the
+  // order in later, filtered of the elements that have been added since base
+  const filteredFinal = [...baseElementsQueue];
+  filteredFinal.sort(cmpByFinalIndex);
+  for (let i = 0; i < filteredFinal.length; i++) {
+    filteredFinal[i].filteredIndex = i;
+  }
+
+  for (let i = 0, k = filteredFinal.length - 1; k > i; ) {
+    if (filteredFinal[i].currentIndex === i) {
+      i++;
+    } else if (filteredFinal[k].currentIndex === k) {
+      k--;
+    } else if (
+      Math.abs(
+        filteredFinal[i].currentIndex - filteredFinal[i].filteredIndex
+      ) >=
+      Math.abs(filteredFinal[k].currentIndex - filteredFinal[k].filteredIndex)
+    ) {
+      changes.push({
+        __typename: 'ArrayMoveElementLeft',
+        afterElIndex: i > 0 ? filteredFinal[i - 1].originalIndex : null,
+        elIndex: filteredFinal[i].originalIndex
+      });
+      elementChanges[filteredFinal[i].originalIndex] =
+        changes[changes.length - 1];
+      const [el] = baseElementsQueue.splice(filteredFinal[i].currentIndex, 1);
+      baseElementsQueue.splice(filteredFinal[i].filteredIndex, 0, el);
+      for (let j = i + 1; j <= k; j++) {
+        baseElementsQueue[j].currentIndex = j;
+      }
+      i++;
+    } else {
+      changes.push({
+        __typename: 'ArrayMoveElementRight',
+        beforeElIndex:
+          k < filteredFinal.length - 1
+            ? filteredFinal[k + 1].originalIndex
+            : null,
+        elIndex: filteredFinal[k].originalIndex
+      });
+      elementChanges[filteredFinal[k].originalIndex] =
+        changes[changes.length - 1];
+      const [el] = baseElementsQueue.splice(filteredFinal[k].currentIndex, 1);
+      baseElementsQueue.splice(filteredFinal[k].filteredIndex, 0, el);
+      for (let j = k - 1; j >= i; j--) {
+        baseElementsQueue[j].currentIndex = j;
+      }
+      k--;
+    }
+  }
+
+  // 3. Add the elements in later that were not in base
+  for (let laterIndex = 0; laterIndex < later.length; laterIndex++) {
+    if (!existingElementsIndexes.has(laterIndex)) {
+      const afterElIndex =
+        laterIndex > 0
+          ? existingElementsIndexes.has(laterIndex - 1)
+            ? existingElementsIndexes.get(laterIndex - 1)!
+            : null
+          : null;
+      changes.push({
+        __typename: 'AddElement',
+        element: later[laterIndex],
+        afterElIndex
+      });
+      elementChanges.push(changes[changes.length - 1]);
+      existingElementsIndexes.set(laterIndex, elementChanges.length - 1);
+    }
+  }
+
+  return {
+    elementChanges: elementChanges.slice(0, base.length) as Array<
+      ArrayKeepElement | ArrayChange<T>
+    >,
+    changes
+  };
+}
+
+function cmpByFinalIndex(a: BaseElementStatus<any>, b: BaseElementStatus<any>) {
+  return (a.finalIndex || -1) - (b.finalIndex || -1);
+}
+
+interface ArrayElementPos<T> {
+  element: T;
+  currentIndex: number;
+  elIndex: number;
+}
+
+/**
+ * Given a base array and an array of array changes, returns a shallow copied
+ * version of the base array to which all the changes have been applied in
+ * sequence.
+ *
+ * @param {T[]} base
+ * @param {ArrayChange<T>[]} changes
+ * @returns {T[]}
+ */
+export function applyArrayDiff<T>(base: T[], changes: ArrayChange<T>[]): T[] {
+  const elements: ArrayElementPos<T>[] = base.map((_, i) => ({
+    element: base[i],
+    currentIndex: i,
+    elIndex: i
+  }));
+  const res = [...elements];
+
+  for (const change of changes) {
+    if (change.__typename === 'AddElement') {
+      const {afterElIndex, element} = change;
+      assert(
+        afterElIndex === null ||
+          (afterElIndex >= 0 && afterElIndex < elements.length),
+        'Expect valid insertion index'
+      );
+      const afterElement =
+        afterElIndex === null ? null : elements[afterElIndex];
+      const targetIndex =
+        afterElement === null ? 0 : afterElement.currentIndex + 1;
+      elements.push({
+        element,
+        elIndex: elements.length,
+        currentIndex: targetIndex
+      });
+      res.splice(targetIndex, 0, elements[elements.length - 1]);
+      for (let i = targetIndex + 1; i < res.length; i++) {
+        res[i].currentIndex++;
+      }
+    } else if (change.__typename === 'ArrayMoveElementLeft') {
+      const {elIndex, afterElIndex} = change;
+      assert(
+        elIndex >= 0 && elIndex < elements.length,
+        'Expect the element index to be valid'
+      );
+      assert(
+        afterElIndex === null ||
+          (afterElIndex >= 0 && afterElIndex < elements.length),
+        'Valid afterElIndex expected'
+      );
+      const elementToMove = elements[elIndex];
+      const afterElement =
+        afterElIndex === null ? null : elements[afterElIndex];
+      const targetIndex = afterElement ? afterElement.currentIndex + 1 : 0;
+      const moveFromIndex = elementToMove.currentIndex;
+      assert(
+        targetIndex < moveFromIndex,
+        'Moving left - target should be less than source'
+      );
+      const [el] = res.splice(moveFromIndex, 1);
+      el.currentIndex = targetIndex;
+      res.splice(targetIndex, 0, el);
+      for (let i = targetIndex + 1; i <= moveFromIndex; i++) {
+        res[i].currentIndex++;
+      }
+    } else if (change.__typename === 'ArrayMoveElementRight') {
+      const {elIndex, beforeElIndex} = change;
+      assert(
+        elIndex >= 0 && elIndex < elements.length,
+        'Expect the element index to be valid'
+      );
+      assert(
+        beforeElIndex === null ||
+          (beforeElIndex >= 0 && beforeElIndex < elements.length),
+        'Valid afterElIndex expected'
+      );
+      const elementToMove = elements[elIndex];
+      const beforeElement =
+        beforeElIndex === null ? null : elements[beforeElIndex];
+      const targetIndex = beforeElement
+        ? beforeElement.currentIndex - 1
+        : res.length - 1;
+      const moveFromIndex = elementToMove.currentIndex;
+      const [el] = res.splice(moveFromIndex, 1);
+      el.currentIndex = targetIndex;
+      res.splice(targetIndex, 0, el);
+      for (let i = moveFromIndex; i < targetIndex; i++) {
+        res[i].currentIndex--;
+      }
+    } else if (change.__typename === 'DeleteElement') {
+      const {elIndex} = change;
+      const targetElement = elements[elIndex];
+      const targetIndex = targetElement.currentIndex;
+      res.splice(targetIndex, 1);
+      for (let i = targetIndex; i < res.length; i++) {
+        res[i].currentIndex--;
+      }
+    }
+  }
+  return res.map(element => element.element);
 }

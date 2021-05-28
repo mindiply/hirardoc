@@ -9,9 +9,9 @@ export {
   addElementToArrayReducer,
   removeElementFromArrayReducer
 } from './HDocument';
-export {diff, diffInfoOf, diffElementInfo} from './HDiff';
+export {diff, diffInfoOf, diffElementInfo, diffArray} from './HDiff';
 export {visitDocument} from './HVisit';
-export {threeWayMerge, mergeElementInfo} from './HMerge3';
+export {threeWayMerge, mergeElementInfo, threeWayMergeArray} from './HMerge3';
 export {denormalizeDocument} from './HDenormalize';
 export {LazyMutableMap} from './LazyMap';
 export {

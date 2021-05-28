@@ -240,3 +240,28 @@ export function mappedElement<
  * @returns {Id}
  */
 export const generateNewId = (): Id => uuid();
+
+export interface AssertConf {
+  outputFn: (text: string) => void;
+  throwOnViolation: boolean;
+}
+
+let assertConf: AssertConf = {
+  outputFn: console.log,
+  throwOnViolation: true
+};
+
+export function setAssertOptions(assertSettings: Partial<AssertConf>) {
+  assertConf = {...assertConf, ...assertSettings};
+}
+
+export function assert(predicate: boolean, errorMsg: string) {
+  if (!predicate) {
+    if (assertConf.outputFn) {
+      assertConf.outputFn(errorMsg);
+    }
+    if (assertConf.throwOnViolation) {
+      throw new Error(errorMsg);
+    }
+  }
+}

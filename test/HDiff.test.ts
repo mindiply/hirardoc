@@ -1,4 +1,6 @@
+import {isEqual} from 'lodash';
 import {
+  ArrayKeepElement,
   diff,
   HDocCommandType,
   HDocOperation,
@@ -9,6 +11,7 @@ import {
   mutableDocument
 } from '../src';
 import {emptyTestDocument, INode, ITestDocElementsMap} from './testTypes';
+import {applyArrayDiff, diffArray} from '../src/HDiff';
 
 describe('Diff between versions of the same tree', () => {
   test('Diff between empty trees', () => {
@@ -32,7 +35,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     const mutableDoc = mutableDocument(a);
@@ -55,7 +59,8 @@ describe('Diff between versions of the same tree', () => {
           _id: 'Node1',
           children: [],
           isChecked: false,
-          text: 'firstNode'
+          text: 'firstNode',
+          membersIds: []
         }
       }
     ];
@@ -77,7 +82,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     let mutableDoc = mutableDocument(a);
@@ -97,7 +103,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node2',
         children: [],
         isChecked: false,
-        text: 'secondNode'
+        text: 'secondNode',
+        membersIds: []
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
@@ -119,7 +126,8 @@ describe('Diff between versions of the same tree', () => {
           _id: 'Node2',
           children: [],
           isChecked: false,
-          text: 'secondNode'
+          text: 'secondNode',
+          membersIds: []
         }
       }
     ];
@@ -142,7 +150,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     const addNodeCmd2: IInsertElement<
@@ -158,7 +167,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node2',
         children: [],
         isChecked: false,
-        text: 'secondNode'
+        text: 'secondNode',
+        membersIds: []
       }
     };
     mutableDoc.insertElement(addNodeCmd);
@@ -180,7 +190,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node3',
         children: [],
         isChecked: false,
-        text: 'thirdNode'
+        text: 'thirdNode',
+        membersIds: []
       }
     };
     mutableDoc.insertElement(addNodeCmd3);
@@ -219,7 +230,8 @@ describe('Diff between versions of the same tree', () => {
           _id: 'Node3',
           children: [],
           isChecked: false,
-          text: 'thirdNode'
+          text: 'thirdNode',
+          membersIds: []
         }
       },
       {
@@ -259,7 +271,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     let mutableDoc = mutableDocument(a);
@@ -277,7 +290,8 @@ describe('Diff between versions of the same tree', () => {
         _id: 'Node2',
         children: [],
         isChecked: false,
-        text: 'secondNode'
+        text: 'secondNode',
+        membersIds: []
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
@@ -327,5 +341,431 @@ describe('Diff between versions of the same tree', () => {
       }
     ];
     expect(diff(a, b)).toMatchObject(expectedDiff);
+  });
+});
+
+describe('Diffing arrays', () => {
+  describe('Normal equals function', () => {
+    test('No changes on empty array', () => {
+      const res = diffArray([], []);
+      expect(res.changes.length).toBe(0);
+      expect(res.elementChanges.length).toBe(0);
+    });
+
+    test('No changes on array of identical values', () => {
+      const res = diffArray([1, 'hello', true], [1, 'hello', true]);
+      expect(res.changes.length).toBe(0);
+      expect(res.elementChanges.length).toBe(3);
+      for (let i = 0; i < res.elementChanges.length; i++) {
+        const elementChange = res.elementChanges[i];
+        const expectedObj: ArrayKeepElement = {
+          __typename: 'KeepElement',
+          elIndex: i
+        };
+        expect(elementChange).toMatchObject(expectedObj);
+      }
+    });
+
+    test('Adding elements', () => {
+      const res = diffArray(
+        [1, 'hello', true],
+        [false, 1, 2, 'hello', true, 'ciao']
+      );
+      expect(res.changes.length).toBe(3);
+      expect(res.changes[0]).toMatchObject({
+        __typename: 'AddElement',
+        element: false,
+        afterElIndex: null
+      });
+      expect(res.changes[1]).toMatchObject({
+        __typename: 'AddElement',
+        element: 2,
+        afterElIndex: 0
+      });
+      expect(res.changes[2]).toMatchObject({
+        __typename: 'AddElement',
+        element: 'ciao',
+        afterElIndex: 2
+      });
+      expect(res.elementChanges.length).toBe(3);
+      expect(res.elementChanges[0]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 0
+      });
+      expect(res.elementChanges[1]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 1
+      });
+      expect(res.elementChanges[2]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 2
+      });
+    });
+
+    test('Moving elements', () => {
+      const res = diffArray([1, 'hello', true], [true, 'hello', 1]);
+      expect(res.changes.length).toBe(2);
+      expect(res.changes[0]).toMatchObject({
+        __typename: 'ArrayMoveElementLeft',
+        afterElIndex: null,
+        elIndex: 2
+      });
+      expect(res.changes[1]).toMatchObject({
+        __typename: 'ArrayMoveElementLeft',
+        afterElIndex: 2,
+        elIndex: 1
+      });
+      expect(res.elementChanges.length).toBe(3);
+      expect(res.elementChanges[0]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 0
+      });
+      expect(res.elementChanges[1]).toMatchObject(res.changes[1]);
+      expect(res.elementChanges[2]).toMatchObject(res.changes[0]);
+    });
+
+    test('deleting elements', () => {
+      const res = diffArray([1, 'hello', true], ['hello']);
+      expect(res.changes.length).toBe(2);
+      expect(res.changes[0]).toMatchObject({
+        __typename: 'DeleteElement',
+        elIndex: 0
+      });
+      expect(res.changes[1]).toMatchObject({
+        __typename: 'DeleteElement',
+        elIndex: 2
+      });
+      expect(res.elementChanges.length).toBe(3);
+      expect(res.elementChanges[0]).toMatchObject(res.changes[0]);
+      expect(res.elementChanges[1]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 1
+      });
+      expect(res.elementChanges[2]).toMatchObject(res.changes[1]);
+    });
+  });
+
+  describe('Deep equals function', () => {
+    test('No changes on empty array', () => {
+      const res = diffArray([], [], isEqual);
+      expect(res.changes.length).toBe(0);
+      expect(res.elementChanges.length).toBe(0);
+    });
+
+    test('No changes on array of identical values', () => {
+      const res = diffArray(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        isEqual
+      );
+      expect(res.changes.length).toBe(0);
+      expect(res.elementChanges.length).toBe(3);
+      for (let i = 0; i < res.elementChanges.length; i++) {
+        const elementChange = res.elementChanges[i];
+        expect(elementChange).toMatchObject({
+          __typename: 'KeepElement',
+          elIndex: i
+        });
+      }
+    });
+
+    test('Adding elements', () => {
+      const res = diffArray(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        [
+          {n: 4, s: 'maybe', b: false},
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 5, s: 'sure', b: true},
+          {n: 3, s: '', b: false},
+          {n: 6, s: '', b: false},
+          {n: 6, s: '', b: false}
+        ],
+        isEqual
+      );
+      expect(res.changes.length).toBe(4);
+      expect(res.changes[0]).toMatchObject({
+        __typename: 'AddElement',
+        element: {n: 4, s: 'maybe', b: false},
+        afterElIndex: null
+      });
+      expect(res.changes[1]).toMatchObject({
+        __typename: 'AddElement',
+        element: {n: 5, s: 'sure', b: true},
+        afterElIndex: 1
+      });
+      expect(res.changes[2]).toMatchObject({
+        __typename: 'AddElement',
+        element: {n: 6, s: '', b: false},
+        afterElIndex: 2
+      });
+      expect(res.changes[3]).toMatchObject({
+        __typename: 'AddElement',
+        element: {n: 6, s: '', b: false},
+        afterElIndex: 5
+      });
+      expect(res.elementChanges.length).toBe(3);
+      for (let i = 0; i < res.elementChanges.length; i++) {
+        const elementChange = res.elementChanges[i];
+        expect(elementChange).toMatchObject({
+          __typename: 'KeepElement',
+          elIndex: i
+        });
+      }
+    });
+
+    test('Moving elements', () => {
+      const res = diffArray(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        [
+          {n: 3, s: '', b: false},
+          {n: 2, s: 'world', b: true},
+          {n: 1, s: 'hello', b: true}
+        ],
+        isEqual
+      );
+      expect(res.changes.length).toBe(2);
+      expect(res.changes[0]).toMatchObject({
+        __typename: 'ArrayMoveElementLeft',
+        elIndex: 2,
+        afterElIndex: null
+      });
+      expect(res.changes[1]).toMatchObject({
+        __typename: 'ArrayMoveElementLeft',
+        afterElIndex: 2,
+        elIndex: 1
+      });
+      expect(res.elementChanges.length).toBe(3);
+      expect(res.elementChanges[0]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 0
+      });
+      expect(res.elementChanges[1]).toMatchObject(res.changes[1]);
+      expect(res.elementChanges[2]).toMatchObject(res.changes[0]);
+    });
+
+    test('deleting elements', () => {
+      const res = diffArray(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        [{n: 2, s: 'world', b: true}],
+        isEqual
+      );
+      expect(res.changes.length).toBe(2);
+      expect(res.changes[0]).toMatchObject({
+        __typename: 'DeleteElement',
+        elIndex: 0
+      });
+      expect(res.changes[1]).toMatchObject({
+        __typename: 'DeleteElement',
+        elIndex: 2
+      });
+      expect(res.elementChanges.length).toBe(3);
+      expect(res.elementChanges[0]).toMatchObject(res.changes[0]);
+      expect(res.elementChanges[1]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 1
+      });
+      expect(res.elementChanges[2]).toMatchObject(res.changes[1]);
+    });
+
+    test('Mix of changes', () => {
+      const res = diffArray(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        [
+          {n: 4, s: 'j', b: false},
+          {n: 3, s: '', b: false},
+          {n: 5, s: 'j', b: false},
+          {n: 2, s: 'world', b: true},
+          {n: 6, s: 'j', b: false}
+        ],
+        isEqual
+      );
+      expect(res.changes.length).toBe(5);
+      expect(res.changes[0]).toMatchObject({
+        __typename: 'DeleteElement',
+        elIndex: 0
+      });
+      expect(res.changes[1]).toMatchObject({
+        __typename: 'ArrayMoveElementLeft',
+        afterElIndex: null,
+        elIndex: 2
+      });
+      expect(res.changes[2]).toMatchObject({
+        __typename: 'AddElement',
+        element: {n: 4, s: 'j', b: false},
+        afterElIndex: null
+      });
+      expect(res.changes[3]).toMatchObject({
+        __typename: 'AddElement',
+        element: {n: 5, s: 'j', b: false},
+        afterElIndex: 2
+      });
+      expect(res.changes[4]).toMatchObject({
+        __typename: 'AddElement',
+        element: {n: 6, s: 'j', b: false},
+        afterElIndex: 1
+      });
+      expect(res.elementChanges.length).toBe(3);
+      expect(res.elementChanges[0]).toMatchObject(res.changes[0]);
+      expect(res.elementChanges[1]).toMatchObject({
+        __typename: 'KeepElement',
+        elIndex: 1
+      });
+      expect(res.elementChanges[2]).toMatchObject(res.changes[1]);
+    });
+  });
+});
+
+describe('applyArrayDiff', () => {
+  test('No changes to apply', () => {
+    const diffObj = diffArray(
+      [
+        {n: 1, s: 'hello', b: true},
+        {n: 2, s: 'world', b: true},
+        {n: 3, s: '', b: false}
+      ],
+      [
+        {n: 1, s: 'hello', b: true},
+        {n: 2, s: 'world', b: true},
+        {n: 3, s: '', b: false}
+      ],
+      isEqual
+    );
+    expect(
+      applyArrayDiff(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        diffObj.changes
+      )
+    ).toMatchObject([
+      {n: 1, s: 'hello', b: true},
+      {n: 2, s: 'world', b: true},
+      {n: 3, s: '', b: false}
+    ]);
+  });
+
+  test('Various changes', () => {
+    const diffObj = diffArray(
+      [
+        {n: 1, s: 'hello', b: true},
+        {n: 2, s: 'world', b: true},
+        {n: 3, s: '', b: false}
+      ],
+      [
+        {n: 4, s: 'j', b: false},
+        {n: 3, s: '', b: false},
+        {n: 5, s: 'j', b: false},
+        {n: 2, s: 'world', b: true},
+        {n: 6, s: 'j', b: false}
+      ],
+      isEqual
+    );
+    expect(
+      applyArrayDiff(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        diffObj.changes
+      )
+    ).toMatchObject([
+      {n: 4, s: 'j', b: false},
+      {n: 3, s: '', b: false},
+      {n: 5, s: 'j', b: false},
+      {n: 2, s: 'world', b: true},
+      {n: 6, s: 'j', b: false}
+    ]);
+  });
+
+  test('Move elements to the right', () => {
+    const diffObj = diffArray(
+      [
+        {n: 1, s: 'hello', b: true},
+        {n: 2, s: 'world', b: true},
+        {n: 3, s: '', b: false}
+      ],
+      [
+        {n: 4, s: 'j', b: false},
+        {n: 3, s: '', b: false},
+        {n: 5, s: 'j', b: false},
+        {n: 2, s: 'world', b: true},
+        {n: 1, s: 'hello', b: true}
+      ],
+      isEqual
+    );
+    expect(
+      applyArrayDiff(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        diffObj.changes
+      )
+    ).toMatchObject([
+      {n: 4, s: 'j', b: false},
+      {n: 3, s: '', b: false},
+      {n: 5, s: 'j', b: false},
+      {n: 2, s: 'world', b: true},
+      {n: 1, s: 'hello', b: true}
+    ]);
+  });
+
+  test('Swapping the order', () => {
+    const diffObj = diffArray(
+      [
+        {n: 1, s: 'hello', b: true},
+        {n: 2, s: 'world', b: true},
+        {n: 3, s: '', b: false}
+      ],
+      [
+        {n: 3, s: '', b: false},
+        {n: 2, s: 'world', b: true},
+        {n: 1, s: 'hello', b: true}
+      ],
+      isEqual
+    );
+    expect(
+      applyArrayDiff(
+        [
+          {n: 1, s: 'hello', b: true},
+          {n: 2, s: 'world', b: true},
+          {n: 3, s: '', b: false}
+        ],
+        diffObj.changes
+      )
+    ).toMatchObject([
+      {n: 3, s: '', b: false},
+      {n: 2, s: 'world', b: true},
+      {n: 1, s: 'hello', b: true}
+    ]);
   });
 });

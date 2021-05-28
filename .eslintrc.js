@@ -4,11 +4,7 @@ module.exports = {
     ecmaVersion: 2018, // Allows for the parsing of modern ECMAScript features
     sourceType: 'module'
   },
-  extends: [
-    'plugin:@typescript-eslint/recommended',
-    'prettier',
-    'prettier/@typescript-eslint'
-  ],
+  extends: ['plugin:@typescript-eslint/recommended', 'prettier'],
   plugins: ['@typescript-eslint', 'prettier'],
   rules: {
     'prettier/prettier': 'error',

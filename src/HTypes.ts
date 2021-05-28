@@ -451,6 +451,52 @@ export enum MergeStatus {
   resolved = 'resolved'
 }
 
+export interface ArrayAddElement<T> {
+  __typename: 'AddElement';
+  element: T;
+  afterElIndex: null | number;
+}
+
+export interface ArrayMoveElementRight {
+  __typename: 'ArrayMoveElementRight';
+  beforeElIndex: number | null;
+  elIndex: number;
+}
+
+export interface ArrayMoveElementLeft {
+  __typename: 'ArrayMoveElementLeft';
+  afterElIndex: number | null;
+  elIndex: number;
+}
+
+export interface ArrayDeleteElement {
+  __typename: 'DeleteElement';
+  elIndex: number;
+}
+
+export interface ArrayKeepElement {
+  __typename: 'KeepElement';
+  elIndex: number;
+}
+
+export type ArrayChange<T> =
+  | ArrayAddElement<T>
+  | ArrayMoveElementRight
+  | ArrayMoveElementLeft
+  | ArrayDeleteElement;
+
+/**
+ * Represents changes that happened between
+ */
+export interface DiffArrayResult<T> {
+  changes: ArrayChange<T>[];
+  elementChanges: Array<ArrayKeepElement | ArrayChange<T>>;
+}
+
+export interface EqualFn {
+  (a: any, b: any): boolean;
+}
+
 /**
  * A conflicted value represents a field value of an element
  * which can have one of a number of values, generated on

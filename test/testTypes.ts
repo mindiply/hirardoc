@@ -29,6 +29,7 @@ export interface INode
   extends IParentedId<'Node', 'Root' | 'Node'>,
     INodeFields {
   children: Id[];
+  membersIds: Id[];
 }
 
 export interface INodeNode
@@ -101,4 +102,28 @@ export function removeParents(root: IRootNode) {
     removeNodeParent(node);
   }
   return omit(root, 'parent');
+}
+
+export function emptyNode(): INode {
+  return {
+    __typename: 'Node',
+    _id: 'NOT_SET',
+    children: [],
+    isChecked: false,
+    text: '',
+    membersIds: [],
+    parentType: null,
+    parentId: null
+  };
+}
+
+export function emptyNodeInfo(): Omit<INode, 'parentId' | 'parentType'> {
+  return {
+    __typename: 'Node',
+    _id: 'NOT_SET',
+    children: [],
+    isChecked: false,
+    text: '',
+    membersIds: []
+  };
 }

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 
+## [0.0.12] - 2021-05-27
+
+### Added
+- **threeWayMergeArray** allows merging two arrays, and is also
+used in threeWayMerge for nodes that have array fields.
+
 ## [0.0.11] - 2021-01-19
 
 ### Fixes

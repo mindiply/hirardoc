@@ -1,5 +1,5 @@
 import {
-  creationDate,
+  creationDate, emptyNodeInfo,
   emptyTestDocument,
   INode,
   IRootNode,
@@ -65,7 +65,8 @@ describe('Test the basic operations', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     const mutableDoc = mutableDocument(emptyDoc);
@@ -107,7 +108,8 @@ describe('Test the basic operations', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     const mutableDoc = mutableDocument(emptyDoc);
@@ -146,7 +148,8 @@ describe('Test the basic operations', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     const mutableDoc = mutableDocument(emptyDoc);
@@ -164,7 +167,8 @@ describe('Test the basic operations', () => {
         _id: 'Node2',
         children: [],
         isChecked: false,
-        text: 'childNode'
+        text: 'childNode',
+        membersIds: []
       }
     };
     mutableDoc.insertElement(addNodeCmd2);
@@ -195,7 +199,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: [],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node1',
         children: [],
         isChecked: false,
@@ -213,7 +217,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: ['children', 0],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node2',
         children: [],
         isChecked: false,
@@ -278,7 +282,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: [],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node1',
         children: [],
         isChecked: false,
@@ -295,7 +299,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: ['children', 0],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node2',
         children: [],
         isChecked: true,
@@ -363,7 +367,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: [],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node1',
         children: [],
         isChecked: false,
@@ -380,7 +384,7 @@ describe('Test the basic operations', () => {
       position: ['children', 1],
       parent: [],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node2',
         children: [],
         isChecked: false,
@@ -397,7 +401,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: ['children', 0],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node3',
         children: [],
         isChecked: false,
@@ -472,7 +476,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: [],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node1',
         children: [],
         isChecked: false,
@@ -489,7 +493,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: ['children', 0],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node2',
         children: [],
         isChecked: true,
@@ -554,7 +558,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: [],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node1',
         children: [],
         isChecked: false,
@@ -571,7 +575,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: ['children', 0],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node2',
         children: [],
         isChecked: true,
@@ -618,7 +622,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: [],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node1',
         children: [],
         isChecked: false,
@@ -635,7 +639,7 @@ describe('Test the basic operations', () => {
       position: ['children', 0],
       parent: ['children', 0],
       element: {
-        __typename: 'Node',
+        ...emptyNodeInfo(),
         _id: 'Node2',
         children: [],
         isChecked: true,
@@ -672,7 +676,8 @@ describe('Test the basic operations', () => {
         _id: 'Node1',
         children: [],
         isChecked: false,
-        text: 'firstNode'
+        text: 'firstNode',
+        membersIds: []
       }
     };
     mutableDoc.insertElement(addNodeCmd);
@@ -689,7 +694,8 @@ describe('Test the basic operations', () => {
         _id: 'Node2',
         children: [],
         isChecked: true,
-        text: 'secondNode'
+        text: 'secondNode',
+        membersIds: []
       }
     };
     mutableDoc.insertElement(addNodeCmd2);

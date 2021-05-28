@@ -1,4 +1,5 @@
 import {
+  emptyNodeInfo,
   ITestDocElementsMap,
   testDocSchema,
   TestNormalizeDocument
@@ -12,7 +13,7 @@ const testDoc: TestNormalizeDocument = {
       [
         'node_1',
         {
-          __typename: 'Node',
+          ...emptyNodeInfo(),
           _id: 'node_1',
           parentType: 'Root',
           parentId: 'root_1',
@@ -24,7 +25,7 @@ const testDoc: TestNormalizeDocument = {
       [
         'node_2',
         {
-          __typename: 'Node',
+          ...emptyNodeInfo(),
           _id: 'node_2',
           children: [],
           isChecked: true,
@@ -36,7 +37,7 @@ const testDoc: TestNormalizeDocument = {
       [
         'node_3',
         {
-          __typename: 'Node',
+          ...emptyNodeInfo(),
           _id: 'node_3',
           children: [],
           isChecked: false,
@@ -160,9 +161,7 @@ describe('HVisit tests', () => {
       typesToVisit: ['Root']
     });
     expect(context.count).toEqual(1);
-    expect(context.nodeIds).toEqual([
-      'Root:root_1'
-    ]);
+    expect(context.nodeIds).toEqual(['Root:root_1']);
     context.count = 0;
     context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
@@ -199,9 +198,7 @@ describe('HVisit tests', () => {
       typesToVisit: ['Root']
     });
     expect(context.count).toEqual(1);
-    expect(context.nodeIds).toEqual([
-      'Root:root_1'
-    ]);
+    expect(context.nodeIds).toEqual(['Root:root_1']);
     context.count = 0;
     context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
@@ -239,9 +236,7 @@ describe('HVisit tests', () => {
       traversal: DocumentVisitTraversal.DEPTH_FIRST
     });
     expect(context.count).toEqual(1);
-    expect(context.nodeIds).toEqual([
-      'Root:root_1'
-    ]);
+    expect(context.nodeIds).toEqual(['Root:root_1']);
     context.count = 0;
     context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
@@ -283,9 +278,7 @@ describe('HVisit tests', () => {
       }
     });
     expect(context.count).toEqual(1);
-    expect(context.nodeIds).toEqual([
-      'Node:node_2'
-    ]);
+    expect(context.nodeIds).toEqual(['Node:node_2']);
     context.count = 0;
     context.nodeIds = [];
     visitDocument(testDoc, testVisit, {
@@ -330,9 +323,7 @@ describe('HVisit tests', () => {
         _id: 'node_2'
       }
     });
-    expect(context.nodeIds).toEqual([
-      'Node:node_2'
-    ]);
+    expect(context.nodeIds).toEqual(['Node:node_2']);
     expect(context.count).toEqual(1);
     context.count = 0;
     context.nodeIds = [];

@@ -4,6 +4,7 @@ import {
   IMergeOkRegion,
   MergeRegion
 } from 'node-diff3';
+import {isEqual} from 'lodash';
 import {
   cloneNormalizedDocument,
   idAndTypeForPath,
@@ -14,9 +15,12 @@ import {
 } from './HDocument';
 import {
   AllMappedTypesFields,
+  ArrayChange,
+  ArrayKeepElement,
   ConflictsMap,
   DocumentVisitTraversal,
   ElementInfoConflicts,
+  EqualFn,
   HDocCommandType,
   IChangeElement,
   Id,
@@ -47,8 +51,15 @@ import {
   UOfNormDoc
 } from './HTypes';
 import {visitDocument} from './HVisit';
-import {diff, diffElementInfo} from './HDiff';
 import {
+  applyArrayDiff,
+  defaultEquals,
+  diff,
+  diffArray,
+  diffElementInfo
+} from './HDiff';
+import {
+  assert,
   generateNewId,
   hasMappedElement,
   isNullableId,
@@ -56,16 +67,25 @@ import {
   mappedElement
 } from './HUtils';
 
-type DataValue = string | Date | number | boolean;
+type DataValue = string | Date | number | boolean | Array<any>;
 
 function isDataValue(obj: any): obj is DataValue {
   return (
     typeof obj === 'string' ||
     typeof obj === 'number' ||
     typeof obj === 'boolean' ||
-    obj instanceof Date
+    obj instanceof Date ||
+    Array.isArray(obj)
   );
 }
+
+// function mergeArrays<T>(
+//   baseValue: T[],
+//   myValue: T[],
+//   theirValue: T[]
+// ): T[] | IValueConflict<T[]> {
+//
+// }
 
 /**
  * Merges atomic values, given a base value, and a
@@ -128,11 +148,24 @@ function mergeDataValues<T extends DataValue>(
     const res = diff3Merge(myValue, baseValue, theirValue, {
       stringSeparator: ''
     });
-    mergedValue = (res.every(region => typeof region === 'string')
-      ? res.join('')
-      : myValue < theirValue
-      ? myValueInp
-      : theirValueInp) as T;
+    mergedValue = (
+      res.every(region => typeof region === 'string')
+        ? res.join('')
+        : myValue < theirValue
+        ? myValueInp
+        : theirValueInp
+    ) as T;
+  } else if (
+    Array.isArray(baseValue) &&
+    Array.isArray(myValue) &&
+    Array.isArray(theirValue)
+  ) {
+    mergedValue = threeWayMergeArray(
+      baseValue,
+      myValue,
+      theirValue,
+      isEqual
+    ) as T;
   } else {
     mergedValue =
       myValue === theirValue && myValue === baseValue
@@ -303,7 +336,8 @@ const defaultHooks: IMergeHooks<NDoc> = {
         > = mergeContext.conflicts[elementType].get(base._id) || {};
         mergeContext.conflicts[elementType].set(base._id, {
           ...elementConflicts,
-          infoConflicts: mergeRes.conflicts as MapsOfNormDoc<NDoc>[typeof elementType]
+          infoConflicts:
+            mergeRes.conflicts as MapsOfNormDoc<NDoc>[typeof elementType]
         });
       }
       elementInfoDiff = diffElementInfo(
@@ -469,7 +503,7 @@ export function threeWayMerge<NorDoc extends INormalizedDocument<any, any>>(
     conflicts: {} as ConflictsMap<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
     overrides:
       options && options.elementsOverrides ? options.elementsOverrides : {},
-    defaultHooks: (defaultHooks as any) as IMergeHooks<NorDoc>
+    defaultHooks: defaultHooks as any as IMergeHooks<NorDoc>
   };
   for (const elementType in baseDoc.maps) {
     // ToDo resolve this type error
@@ -509,15 +543,15 @@ export function mergeElementInfo<
       fieldName === 'parentId' ||
       fieldName === 'parentType' ||
       fieldName in schema.types[elementType] ||
-      excludeFields.indexOf((fieldName as any) as K) !== -1 ||
+      excludeFields.indexOf(fieldName as any as K) !== -1 ||
       !isDataValue(cloneElement[fieldName])
     ) {
       continue;
     }
     const mergedVal = mergeDataValues(
-      (baseElement[fieldName as keyof ElementType] as any) as DataValue,
-      (leftElement[fieldName as keyof ElementType] as any) as DataValue,
-      (rightElement[fieldName as keyof ElementType] as any) as DataValue
+      baseElement[fieldName as keyof ElementType] as any as DataValue,
+      leftElement[fieldName as keyof ElementType] as any as DataValue,
+      rightElement[fieldName as keyof ElementType] as any as DataValue
     );
     if (isDataValue(mergedVal)) {
       // @ts-expect-error
@@ -541,10 +575,8 @@ const getElementTypeUid = <MapsInterface, U extends keyof MapsInterface>(
   elementType: U
 ): string => `${doc.schema.documentType}.${elementType}`;
 
-const elementTypesOverridesMap: Map<
-  string,
-  IMergeElementOverrides<any, any>
-> = new Map();
+const elementTypesOverridesMap: Map<string, IMergeElementOverrides<any, any>> =
+  new Map();
 
 function createGetterSetter<T>(value: T): IGetterSetter<T> {
   let val = value;
@@ -635,21 +667,22 @@ function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
     );
     const newParent = {
       ...parent,
-      [parentToChildField]: ((parent as any)[
-        parentToChildField
-      ] as Id[]).slice()
+      [parentToChildField]: (
+        (parent as any)[parentToChildField] as Id[]
+      ).slice()
     };
     const oldIndex = ((newParent as any)[parentToChildField] as Id[]).indexOf(
       elementId
     );
     if (oldIndex !== -1) {
-      ((newParent as any)[parentToChildField] as Id[])[
-        oldIndex
-      ] = rebasedRootId;
+      ((newParent as any)[parentToChildField] as Id[])[oldIndex] =
+        rebasedRootId;
     }
-    (changedDocument.maps[
-      rebasingRootElement.parentType as UOfNormDoc<NorDoc>
-    ] as Map<Id, IParentedId>).set(rebasingRootElement.parentId, newParent);
+    (
+      changedDocument.maps[
+        rebasingRootElement.parentType as UOfNormDoc<NorDoc>
+      ] as Map<Id, IParentedId>
+    ).set(rebasingRootElement.parentId, newParent);
   } else {
     changedDocument.rootId = rebasedRootId;
   }
@@ -683,9 +716,9 @@ function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
         const linkFieldProps = nodeSchema[linkField];
         if (Array.isArray(linkFieldProps)) {
           const {__schemaType} = linkFieldProps[0];
-          (reIdedElement as any)[linkField] = ((reIdedElement as any)[
-            linkField
-          ] as Id[]).map(
+          (reIdedElement as any)[linkField] = (
+            (reIdedElement as any)[linkField] as Id[]
+          ).map(
             existingId => newIds.get(getElementUid(__schemaType, existingId))!
           );
         } else {
@@ -737,10 +770,8 @@ function fnsForElementType<
   const typeUid = getElementTypeUid(context.myDoc(), elementType);
   let overridableFunctions:
     | undefined
-    | IMergeElementOverrides<
-        ElementType,
-        NorDoc
-      > = elementTypesOverridesMap.get(typeUid);
+    | IMergeElementOverrides<ElementType, NorDoc> =
+    elementTypesOverridesMap.get(typeUid);
   if (!overridableFunctions) {
     const {overrides} = context;
     const elementOverrides =
@@ -748,17 +779,18 @@ function fnsForElementType<
         ? overrides[elementType]!
         : ({} as IMergeElementOverrides<any, NorDoc>);
     overridableFunctions = {
-      onIncompatibleElementVersions: elementOverrides.onIncompatibleElementVersions
-        ? elementOverrides.onIncompatibleElementVersions
-        : (elementId, parentPath, position, versionMoved, mergeContext) =>
-            context.defaultHooks.onIncompatibleElementVersions(
-              elementType,
-              elementId,
-              parentPath,
-              position,
-              versionMoved,
-              mergeContext
-            ),
+      onIncompatibleElementVersions:
+        elementOverrides.onIncompatibleElementVersions
+          ? elementOverrides.onIncompatibleElementVersions
+          : (elementId, parentPath, position, versionMoved, mergeContext) =>
+              context.defaultHooks.onIncompatibleElementVersions(
+                elementType,
+                elementId,
+                parentPath,
+                position,
+                versionMoved,
+                mergeContext
+              ),
       moveToMergePosition: elementOverrides.moveToMergePosition
         ? elementOverrides.moveToMergePosition
         : (elementId, toParentPath, toPosition, mergeContext) =>
@@ -966,7 +998,8 @@ function isConflictMergeZone(obj: any): obj is IMergeConflictRegion<any> {
  * value is used straight away.
  */
 class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
-  implements IterableIterator<IProcessingOrderElement> {
+  implements IterableIterator<IProcessingOrderElement>
+{
   private baseArray: Id[];
   private _mergingArray: Id[];
   private _leftArray: Id[];
@@ -995,28 +1028,32 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
           linkedArrayField
         ] as Id[])
       : [];
-    this._mergingArray = (mappedElement(
-      mergeCtx.mergedDoc.maps,
-      parentType,
-      parentId
-    )[linkedArrayField] as Id[]).slice();
+    this._mergingArray = (
+      mappedElement(mergeCtx.mergedDoc.maps, parentType, parentId)[
+        linkedArrayField
+      ] as Id[]
+    ).slice();
     this._leftArray = hasMappedElement(
       mergeCtx.myDoc().maps,
       parentType,
       parentId
     )
-      ? (mappedElement(mergeCtx.myDoc().maps, parentType, parentId)[
-          linkedArrayField
-        ] as Id[]).slice()
+      ? (
+          mappedElement(mergeCtx.myDoc().maps, parentType, parentId)[
+            linkedArrayField
+          ] as Id[]
+        ).slice()
       : [];
     this._rightArray = hasMappedElement(
       mergeCtx.theirDoc().maps,
       parentType,
       parentId
     )
-      ? (mappedElement(mergeCtx.theirDoc().maps, parentType, parentId)[
-          linkedArrayField
-        ] as Id[]).slice()
+      ? (
+          mappedElement(mergeCtx.theirDoc().maps, parentType, parentId)[
+            linkedArrayField
+          ] as Id[]
+        ).slice()
       : [];
     this.mergeZones = diff3Merge(
       this._leftArray,
@@ -1342,18 +1379,16 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
             rightState.hasPositionBeenProcessed = true;
           }
         } else {
-          const {
-            advancedMergingIndex,
-            rebasedIds
-          } = onIncompatibleElementVersions(
-            childId,
-            parentPath,
-            [linkedArrayField, mergedIndex],
-            childFrom === ProcessingOrderFrom.right
-              ? ProcessingOrderFrom.right
-              : ProcessingOrderFrom.left,
-            mergeCtx
-          );
+          const {advancedMergingIndex, rebasedIds} =
+            onIncompatibleElementVersions(
+              childId,
+              parentPath,
+              [linkedArrayField, mergedIndex],
+              childFrom === ProcessingOrderFrom.right
+                ? ProcessingOrderFrom.right
+                : ProcessingOrderFrom.left,
+              mergeCtx
+            );
           for (const {_id: oldId, newId, rebasedSide} of rebasedIds) {
             idsToProcessIterator.reId(oldId, newId, rebasedSide);
           }
@@ -1548,4 +1583,108 @@ function stripChildrenFromElement<
     }
   }
   return clonedElement;
+}
+
+export function threeWayMergeArray<T>(
+  base: T[],
+  mine: T[],
+  their: T[],
+  equalsFn: EqualFn = defaultEquals
+): T[] {
+  const {changes: dmChanges, elementChanges: mElChanges} = diffArray(
+    base,
+    mine,
+    equalsFn
+  );
+  const {changes: dtChanges, elementChanges: tElChanges} = diffArray(
+    base,
+    their,
+    equalsFn
+  );
+  assert(
+    base.length === mElChanges.length,
+    'elementChanges should be as long as the base array'
+  );
+  assert(
+    base.length === tElChanges.length,
+    'elementChanges should be as long as the base array'
+  );
+  const mChanges = delayDeletions(dmChanges).filter(
+    createArrayChangeFilter(tElChanges, true)
+  );
+  const tChanges = delayDeletions(dtChanges).filter(
+    createArrayChangeFilter(mElChanges, false)
+  );
+  const mergedChanges: ArrayChange<T>[] = delayDeletions([
+    ...mChanges,
+    ...tChanges
+  ]);
+  return applyArrayDiff(base, mergedChanges);
+}
+
+function createArrayChangeFilter(
+  otherChanges: Array<ArrayKeepElement | ArrayChange<any>>,
+  winByDefault: boolean
+) {
+  return (change: ArrayChange<any>): boolean => {
+    if (change.__typename === 'AddElement') {
+      return true;
+    }
+    const otherChange = otherChanges[change.elIndex];
+    if (change.__typename === 'ArrayMoveElementLeft') {
+      if (otherChange.__typename === 'ArrayMoveElementLeft') {
+        const mDelta =
+          change.elIndex -
+          (change.afterElIndex === null ? -1 : change.afterElIndex);
+        const tDelta =
+          otherChange.elIndex -
+          (otherChange.afterElIndex === null ? -1 : otherChange.afterElIndex);
+        return mDelta !== tDelta ? mDelta > tDelta : winByDefault;
+      } else {
+        return true;
+      }
+    } else if (otherChange.__typename === 'ArrayMoveElementLeft') {
+      return false;
+    } else if (change.__typename === 'ArrayMoveElementRight') {
+      if (otherChange.__typename === 'ArrayMoveElementRight') {
+        const mDelta =
+          (change.beforeElIndex === null
+            ? otherChanges.length - 1
+            : change.beforeElIndex) - change.elIndex;
+        const tDelta =
+          (otherChange.beforeElIndex === null
+            ? otherChanges.length - 1
+            : otherChange.beforeElIndex) - otherChange.elIndex;
+        return mDelta !== tDelta ? mDelta > tDelta : winByDefault;
+      } else {
+        return true;
+      }
+    } else if (otherChange.__typename === 'ArrayMoveElementRight') {
+      return true;
+    } else if (change.__typename === 'DeleteElement') {
+      if (otherChange.__typename === 'DeleteElement') {
+        return winByDefault;
+      } else {
+        return true;
+      }
+    }
+    assert(false, 'We should have chose a true or false by now');
+    return false;
+  };
+}
+
+function delayDeletions(changes: ArrayChange<any>[]) {
+  const deletions: ArrayChange<any>[] = [];
+  const additions: ArrayChange<any>[] = [];
+  const moves: ArrayChange<any>[] = [];
+  for (const change of changes) {
+    if (change.__typename === 'DeleteElement') {
+      deletions.push(change);
+    } else if (change.__typename === 'AddElement') {
+      additions.push(change);
+    } else {
+      moves.push(change);
+    }
+  }
+  return [...moves, ...deletions, ...additions];
 }

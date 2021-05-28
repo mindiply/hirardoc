@@ -51,10 +51,8 @@ import {visitDocument} from './HVisit';
 export function cloneNormalizedDocument<
   NorDoc extends INormalizedDocument<any, any>
 >(doc: NorDoc): NorDoc {
-  const clonedMaps: EntitiesMaps<
-    MapsOfNormDoc<NorDoc>,
-    UOfNormDoc<NorDoc>
-  > = {} as EntitiesMaps<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
+  const clonedMaps: EntitiesMaps<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> =
+    {} as EntitiesMaps<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
   let mapField: UOfNormDoc<NorDoc>;
   for (mapField in doc.maps) {
     const entityMap = doc.maps[mapField];
@@ -183,7 +181,7 @@ function getSchemaTypeMap<
   if (!schemaMap.has(schema.documentType)) {
     schemaMap.set(schema.documentType, createTypesMapForSchema(schema));
   }
-  return (schemaMap.get(schema.documentType)! as any) as TypeLinkDictionary<
+  return schemaMap.get(schema.documentType)! as any as TypeLinkDictionary<
     MapsInterface,
     U
   >;
@@ -441,7 +439,7 @@ function createTypesMapForSchema<
       const childFieldSettings = fieldSettingsValue[0];
       typeEntry.children[childFieldSettings.__schemaType] = {
         type: childFieldSettings.__schemaType,
-        field: (fieldName as any) as AllMappedTypesFields<MapsInterface>,
+        field: fieldName as any as AllMappedTypesFields<MapsInterface>,
         isArray: Array.isArray(fieldSettingsValue)
       };
     }
@@ -505,11 +503,9 @@ export function pathForElementWithId<
     }
     path.push(parentToUsFieldLink.field);
     if (parentToUsFieldLink.isArray) {
-      const position = ((parentElement as any)[
-        parentToUsFieldLink.field
-      ] as Array<Id>).findIndex(
-        parentedElementId => parentedElementId === elementId
-      );
+      const position = (
+        (parentElement as any)[parentToUsFieldLink.field] as Array<Id>
+      ).findIndex(parentedElementId => parentedElementId === elementId);
       if (position === -1) {
         throw new Error(
           `Element ${elementTypeMap}.${elementId} not found in parent`
@@ -712,9 +708,8 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
       let hasChanges = false;
       for (const mapName in this.maps) {
         // @ts-expect-error
-        updatedMaps[mapName as UOfNormDoc<NorDoc>] = this.maps[
-          mapName as UOfNormDoc<NorDoc>
-        ].getMap();
+        updatedMaps[mapName as UOfNormDoc<NorDoc>] =
+          this.maps[mapName as UOfNormDoc<NorDoc>].getMap();
         hasChanges =
           hasChanges || this.maps[mapName as UOfNormDoc<NorDoc>].hasChanged();
       }
@@ -942,11 +937,9 @@ export function mutableDocument<NorDoc extends INormalizedDocument<any, any>>(
         }
         path.push(parentToUsFieldLink.field);
         if (parentToUsFieldLink.isArray) {
-          const position = ((parentElement as any)[
-            parentToUsFieldLink.field
-          ] as Array<Id>).findIndex(
-            parentedElementId => parentedElementId === elementId
-          );
+          const position = (
+            (parentElement as any)[parentToUsFieldLink.field] as Array<Id>
+          ).findIndex(parentedElementId => parentedElementId === elementId);
           if (position === -1) {
             throw new Error(
               `Element ${elementTypeMap}.${elementId} not found in parent`
@@ -1056,9 +1049,8 @@ export const addElementToArrayReducer = <
   const element = mappedElement(doc, elementType, elementId) as IParentedId;
   if (arrayFieldName in element) {
     const elementArray = (element as any)[arrayFieldName] as T[];
-    const elementsToAdd = (Array.isArray(arrayElement)
-      ? arrayElement
-      : [arrayElement]
+    const elementsToAdd = (
+      Array.isArray(arrayElement) ? arrayElement : [arrayElement]
     ).filter(el => elementArray.indexOf(el) === -1);
     if (elementsToAdd.length === 0) {
       return doc;
