@@ -575,8 +575,10 @@ const getElementTypeUid = <MapsInterface, U extends keyof MapsInterface>(
   elementType: U
 ): string => `${doc.schema.documentType}.${elementType}`;
 
-const elementTypesOverridesMap: Map<string, IMergeElementOverrides<any, any>> =
-  new Map();
+const elementTypesOverridesMap: Map<
+  string,
+  IMergeElementOverrides<any, any>
+> = new Map();
 
 function createGetterSetter<T>(value: T): IGetterSetter<T> {
   let val = value;

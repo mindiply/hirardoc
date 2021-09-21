@@ -292,7 +292,7 @@ export interface INormalizedMutableMapsDocument<
  * a normalized document, and that can replay a list of the underlying
  * document changes with applyChanges.
  *
- * This interface is what can be extended to create domain speific operations,
+ * This interface is what can be extended to create domain specific operations,
  * that rely on the functions in IMutableDocument to track changes at a lower
  * level of abstraction.
  */

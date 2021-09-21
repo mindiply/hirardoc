@@ -51,8 +51,10 @@ import {visitDocument} from './HVisit';
 export function cloneNormalizedDocument<
   NorDoc extends INormalizedDocument<any, any>
 >(doc: NorDoc): NorDoc {
-  const clonedMaps: EntitiesMaps<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> =
-    {} as EntitiesMaps<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
+  const clonedMaps: EntitiesMaps<
+    MapsOfNormDoc<NorDoc>,
+    UOfNormDoc<NorDoc>
+  > = {} as EntitiesMaps<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
   let mapField: UOfNormDoc<NorDoc>;
   for (mapField in doc.maps) {
     const entityMap = doc.maps[mapField];

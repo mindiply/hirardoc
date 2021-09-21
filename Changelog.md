@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 
+## [0.0.13] - 2021-09-21
+
+### Changes
+- Weakend type checking functions *isParentedMap* and *isParentedMutableMap*
+for performance reasons, given that being maps keeps true the has and get members
+of the interface
+
 ## [0.0.12] - 2021-05-27
 
 ### Added

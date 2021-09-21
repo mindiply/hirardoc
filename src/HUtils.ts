@@ -41,19 +41,12 @@ export function isParentedId(obj: any): obj is IParentedId {
 
 /**
  * Check if a map contains parented id elements. For performance reasons
- * we only check the first element.
+ * we only check the object is a map.
  * @param obj
  * @returns {obj is Map<Id, IParentedId>}
  */
 export function isParentedMap(obj: any): obj is Map<Id, IParentedId> {
-  if (obj && obj instanceof Map) {
-    if (obj.size === 0) return true;
-    for (const [key, val] of obj.entries()) {
-      return isId(key) && isParentedId(val);
-    }
-    return true;
-  }
-  return false;
+  return Boolean(obj && obj instanceof Map);
 }
 
 export function isEntitiesMap(obj: any): obj is EntitiesMaps<any, any> {
@@ -118,14 +111,7 @@ export function isIParentedId<U>(obj: any): obj is IParentedId<U> {
 export function isParentedMutableMap(
   obj: any
 ): obj is ILazyMutableMap<Id, IParentedId> {
-  if (obj && obj instanceof LazyMutableMap) {
-    if (obj.getMap().size === 0) return true;
-    for (const [key, val] of obj.getMap().entries()) {
-      return isId(key) && isParentedId(val);
-    }
-    return true;
-  }
-  return false;
+  return Boolean(obj && obj instanceof LazyMutableMap);
 }
 
 export function isMutableEntitiesMap(
