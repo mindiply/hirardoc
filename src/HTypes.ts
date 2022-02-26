@@ -55,8 +55,10 @@ export type EntitiesMaps<
   U extends keyof MapsInterface = keyof MapsInterface
 > = {
   [F in U]: MapsInterface[F] extends Map<Id, infer S>
-    ? S extends IParentedId<U, U>
+    ? [S] extends [IParentedId<U, U>]
       ? Map<Id, S>
+      : S extends IParentedId<U, U>
+      ? S
       : never
     : never;
 };
@@ -584,7 +586,7 @@ export type ConflictsMap<MapsInterface, U extends keyof MapsInterface> = {
 export interface IVisitor<
   MapsInterface,
   U extends keyof MapsInterface = keyof MapsInterface,
-  Context extends any = any
+  Context = any
 > {
   (
     doc:

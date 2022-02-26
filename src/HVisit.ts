@@ -23,7 +23,7 @@ import {isParentedId, mappedElement} from './HUtils';
 export function visitDocument<
   MapsInterface,
   U extends keyof MapsInterface = keyof MapsInterface,
-  Context extends any = any
+  Context = any
 >(
   doc:
     | INormalizedDocument<MapsInterface, U>
