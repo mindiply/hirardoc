@@ -227,8 +227,8 @@ export interface IMoveElement<
 
 export type HDocOperation<
   MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface>,
-  T extends IParentedId<U, U>
+  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>,
+  T extends IParentedId<U, U> = AllMappedTypes<MapsInterface>
 > =
   | IInsertElement<MapsInterface, U, T>
   | IChangeElement<MapsInterface, U, T>
