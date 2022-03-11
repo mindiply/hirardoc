@@ -1,3 +1,4 @@
+import jsSHA from 'jssha';
 import {
   HDocOperation,
   Id,
@@ -85,7 +86,7 @@ export interface HistoryRedoRecord<MapsInterface, U extends keyof MapsInterface>
 export interface HistoryMergeRecord<
   MapsInterface,
   U extends keyof MapsInterface
-> {
+> extends BaseHistoryRecord<MapsInterface, U> {
   __typename: HistoryEntryType.MERGE;
   baseCommitId: string;
   theirOperations: Array<
@@ -101,6 +102,16 @@ export type HistoryRecord<MapsInterface, U extends keyof MapsInterface> =
   | HistoryUndoRecord<MapsInterface, U>
   | HistoryRedoRecord<MapsInterface, U>
   | HistoryMergeRecord<MapsInterface, U>;
+
+function injectCommitIdInOperation<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  T extends HistoryRecord<MapsInterface, U> = HistoryRecord<MapsInterface, U>
+>(operation: Omit<T, 'commitId'>): T {
+  const shaObj = new jsSHA('SHA-512', 'TEXT');
+  shaObj.update(JSON.stringify(operation));
+  return {...operation, commitId: shaObj.getHash('HEX')} as T;
+}
 
 export interface OperationInterpreter<
   MapsInterface,
@@ -264,20 +275,69 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
   implements HDocHistory<MapsInterface, U>
 {
   private _commitIdsIndexMap: Map<string, number>;
-  private _historyEntriesCommits: HistoryRecord<MapsInterface, U>;
+  private _historyEntries: HistoryRecord<MapsInterface, U>[];
 
   constructor(
     entriesOrDoc:
       | INormalizedDocument<MapsInterface, U>
-      | HistoryRecord<MapsInterface, U>[]
+      | HistoryRecord<MapsInterface, U>[],
+    userId: Id | null = null
   ) {
-    const entries: HistoryRecord<MapsInterface, U> = Array.isArray(entriesOrDoc) ? [...entriesOrDoc] : [{
-      __typename: HistoryEntryType.OPERATION,
-      previousCommitId: null,
-      checkpoint: entriesOrDoc,
-
-    }]
+    this._historyEntries = [];
+    this._commitIdsIndexMap = new Map();
+    if (Array.isArray(entriesOrDoc)) {
+      this._pushHistoryRecords(entriesOrDoc);
+    } else {
+      const initOp = injectCommitIdInOperation<MapsInterface, U>({
+        __typename: HistoryEntryType.OPERATION,
+        previousCommitId: null,
+        checkpoint: entriesOrDoc,
+        changes: [],
+        userId,
+        when: new Date()
+      });
+      this._pushHistoryRecords(initOp);
+    }
   }
+
+  private _pushHistoryRecords = (
+    historyRecords:
+      | HistoryRecord<MapsInterface, U>
+      | HistoryRecord<MapsInterface, U>[]
+  ) => {
+    const records = Array.isArray(historyRecords)
+      ? historyRecords
+      : [historyRecords];
+    for (const record of records) {
+      this._historyEntries.push(record);
+      this._commitIdsIndexMap.set(
+        record.commitId,
+        this._historyEntries.length - 1
+      );
+    }
+  };
+
+  private _deleteHistoryRecords = (
+    historyRecords:
+      | HistoryRecord<MapsInterface, U>
+      | HistoryRecord<MapsInterface, U>[]
+  ) => {
+    const records = (
+      Array.isArray(historyRecords) ? [...historyRecords] : [historyRecords]
+    ).filter(record => this._commitIdsIndexMap.has(record.commitId));
+    records.sort(
+      (a, b) =>
+        this._commitIdsIndexMap.get(b.commitId)! -
+        this._commitIdsIndexMap.get(a.commitId)!
+    );
+    for (const recordToDelete of records) {
+      const index = this._commitIdsIndexMap.get(recordToDelete.commitId)!;
+      this._historyEntries.splice(index, 1);
+      for (let i = index; i < this._historyEntries.length; i++) {
+        this._commitIdsIndexMap.set(this._historyEntries[i].commitId, i);
+      }
+    }
+  };
 }
 
 export function initHDocHistory<MapsInterface, U extends keyof MapsInterface>(
