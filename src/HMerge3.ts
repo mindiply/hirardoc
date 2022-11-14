@@ -573,7 +573,7 @@ const getElementTypeUid = <MapsInterface, U extends keyof MapsInterface>(
     | INormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   elementType: U
-): string => `${doc.schema.documentType}.${elementType}`;
+): string => `${doc.schema.documentType}.${String(elementType)}`;
 
 const elementTypesOverridesMap: Map<
   string,
@@ -942,6 +942,7 @@ function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
     mergedDoc,
     (doc, nodeType, nodeId) => {
       const nodeUid = getElementUid(nodeType, nodeId);
+      const existsBase = hasMappedElement(mergeCtx.baseDoc, nodeType, nodeId);
       const existsLeft = hasMappedElement(
         mergeCtx.myDoc().maps,
         nodeType,
@@ -958,7 +959,12 @@ function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
       const editedRight = existsRight
         ? mergeCtx.theirElementsMergeState.get(nodeUid)!.isInEditedPath
         : false;
-      if ((!existsLeft || !existsRight) && !editedLeft && !editedRight) {
+      if (
+        existsBase &&
+        (!existsLeft || !existsRight) &&
+        !editedLeft &&
+        !editedRight
+      ) {
         elementsToDelete.push([nodeType, nodeId]);
       }
     },
