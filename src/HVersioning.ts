@@ -5,6 +5,7 @@ import {
   IMutableDocument,
   INormalizedDocument
 } from './HTypes';
+import {mutableDocument} from './HDocument';
 
 export enum HistoryEntryType {
   OPERATION = 'TimelineOperation',
@@ -266,7 +267,7 @@ interface HDocHistory<
   ) => INormalizedDocument<MapsInterface, U>;
 }
 
-interface InitHDocOptions<MapsInterface, U extends keyof MapsInterface> {
+export interface InitHDocOptions<MapsInterface, U extends keyof MapsInterface> {
   operationInterpreter?: OperationInterpreter<MapsInterface, U>;
   userId?: Id | null;
 }
@@ -276,15 +277,20 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
 {
   private _commitIdsIndexMap: Map<string, number>;
   private _historyEntries: HistoryRecord<MapsInterface, U>[];
+  private _operationInterpreter: OperationInterpreter<MapsInterface, U>;
 
   constructor(
     entriesOrDoc:
       | INormalizedDocument<MapsInterface, U>
       | HistoryRecord<MapsInterface, U>[],
-    userId: Id | null = null
+    {
+      operationInterpreter,
+      userId = null
+    }: InitHDocOptions<MapsInterface, U> = {}
   ) {
     this._historyEntries = [];
     this._commitIdsIndexMap = new Map();
+    this._operationInterpreter = operationInterpreter || defaultInterpreter;
     if (Array.isArray(entriesOrDoc)) {
       this._pushHistoryRecords(entriesOrDoc);
     } else {
@@ -298,6 +304,131 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
       });
       this._pushHistoryRecords(initOp);
     }
+  }
+
+  public get operationInterpreter() {
+    return this._operationInterpreter;
+  }
+
+  public get historyEntries() {
+    return this._historyEntries;
+  }
+
+  public get lastCommitId() {
+    if (this.historyEntries.length < 1) {
+      throw new RangeError('No history records in versioning object');
+    }
+    return this.historyEntries[this.historyEntries.length - 1].commitId;
+  }
+
+  public hasCommitId = (commitId: string) =>
+    this._commitIdsIndexMap.has(commitId);
+
+  public nextCommitIdOf = (commitId: string) => {
+    const entryIndex = this._commitIdsIndexMap.get(commitId);
+    if (typeof entryIndex === 'number') {
+      if (entryIndex < this._historyEntries.length - 1) {
+        return this._historyEntries[entryIndex + 1].commitId;
+      }
+    }
+    return null;
+  };
+
+  public prevCommitIdOf = (commitId: string) => {
+    const entryIndex = this._commitIdsIndexMap.get(commitId);
+    if (typeof entryIndex === 'number') {
+      if (entryIndex > 0) {
+        return this._historyEntries[entryIndex - 1].commitId;
+      }
+    }
+    return null;
+  };
+
+  public documentAtCommitId = (
+    commitId?: string
+  ): INormalizedDocument<MapsInterface, U> => {
+    const targetCommitId = commitId || this.lastCommitId;
+    const targetCommitIndex = this._commitIdsIndexMap.get(targetCommitId);
+    if (targetCommitIndex === undefined) {
+      throw new RangeError('Commit id does not exist');
+    }
+    const checkpointIndex = this._findClosestCheckpointIndex(targetCommitId);
+    if (checkpointIndex < 0) {
+      throw new TypeError('Cannot find a checkpoint');
+    }
+    const checkpointDoc = this._historyEntries[checkpointIndex].checkpoint!;
+    if (targetCommitIndex === checkpointIndex) {
+      return checkpointDoc;
+    }
+    const mutableDoc = mutableDocument(
+      this._historyEntries[checkpointIndex].checkpoint!
+    );
+    for (let i = checkpointIndex + 1; i < this._historyEntries.length; i++) {
+      // @ts-expect-error typing ambiguous for change field
+      mutableDoc.applyChanges(this._historyEntries[i].changes);
+    }
+    return mutableDoc.updatedDocument();
+  };
+
+  public commit = <Operation>(
+    operation: Operation | Operation[],
+    userId: Id | null = null
+  ): INormalizedDocument<MapsInterface, U> => {
+    const mutableDoc = mutableDocument(this.documentAtCommitId());
+    const operations = Array.isArray(operation) ? operation : [operation];
+    for (const op of operations) {
+      this._operationInterpreter(mutableDoc, op);
+    }
+    const operationRecord = injectCommitIdInOperation({
+      __typename: HistoryEntryType.OPERATION,
+      operation,
+      changes: mutableDoc.changes,
+      previousCommitId: this.lastCommitId,
+      userId,
+      when: new Date(),
+      // @ts-expect-error U can be instantiated to a different type
+      checkpoint: mutableDoc.updatedDocument()
+    }) as HistoryOperationRecord<MapsInterface, U, Operation>;
+    this._pushHistoryRecords(operationRecord);
+    return operationRecord.checkpoint as INormalizedDocument<MapsInterface, U>;
+  };
+
+  public branch = (fromCommitId?: string): HDocHistory<MapsInterface, U> => {
+    const targetCommitId = fromCommitId || this.lastCommitId;
+    const commitIndex = this._commitIdsIndexMap.get(targetCommitId);
+    if (commitIndex === undefined) {
+      throw new RangeError('commitId not found');
+    }
+    const entries = this._historyEntries.slice(0, commitIndex + 1);
+    return new HDocHistoryImpl(entries);
+  };
+
+  public generateHistoryDelta = (
+    fromCommitId: string,
+    toCommitId?: string
+  ): HistoryDelta<MapsInterface, U> => {};
+
+  public mergeHistoryDelta = (
+    historyDelta: HistoryDelta<MapsInterface, U>,
+    userId?: Id
+  ): INormalizedDocument<MapsInterface, U> => {};
+
+  public redo = (
+    userId?: Id | null
+  ): INormalizedDocument<MapsInterface, U> => {};
+
+  public undo = (
+    userId?: Id | null
+  ): INormalizedDocument<MapsInterface, U> => {};
+
+  private _findClosestCheckpointIndex(commitId: string): number {
+    let i = this._commitIdsIndexMap.get(commitId)!;
+    for (let checkpointFound = false; !checkpointFound && i >= 0; i--) {
+      if (this._historyEntries[i].checkpoint) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   private _pushHistoryRecords = (
@@ -344,8 +475,7 @@ export function initHDocHistory<MapsInterface, U extends keyof MapsInterface>(
   documentOrHistoryRecords:
     | INormalizedDocument<MapsInterface, U>
     | HistoryRecord<MapsInterface, U>[],
-  {
-    operationInterpreter = defaultInterpreter,
-    userId = null
-  }: InitHDocOptions<MapsInterface, U>
-): HDocHistory<MapsInterface, U> {}
+  options: InitHDocOptions<MapsInterface, U>
+): HDocHistory<MapsInterface, U> {
+  return new HDocHistoryImpl(documentOrHistoryRecords, options);
+}
