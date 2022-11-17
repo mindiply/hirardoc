@@ -234,7 +234,7 @@ export function idAndTypeForPath<MapsInterface, U extends keyof MapsInterface>(
     if (trimmedPath.length > 0) {
       docContext = mappedElement(doc.maps, __typename, _id) as IParentedId;
       if (!(__typename in schema.types)) {
-        throw new Error(`TYpe not found in schema: ${__typename}`);
+        throw new Error(`TYpe not found in schema: ${String(__typename)}`);
       }
       schemaContext = schema.types[__typename as U];
     } else {
@@ -353,7 +353,9 @@ function parentTypeOfElement<MapsInterface, U extends keyof MapsInterface>(
   if (!parentType) {
     const elementMappings = typeMap.get(childType);
     if (!(elementMappings && elementMappings.parent)) {
-      throw new TypeError(`Type mappings not found for type ${childType}`);
+      throw new TypeError(
+        `Type mappings not found for type ${String(childType)}`
+      );
     }
     parentType = elementMappings.parent.type;
   }
@@ -373,11 +375,15 @@ function parentToChildTypeMappings<
   const typeMap = getSchemaTypeMap(document.schema);
   const parentMappings = typeMap.get(parentType);
   if (!parentMappings) {
-    throw new TypeError(`Parent type mappings for child type ${childType}`);
+    throw new TypeError(
+      `Parent type mappings for child type ${String(childType)}`
+    );
   }
   if (!(childType in parentMappings.children)) {
     throw new TypeError(
-      `Child type ${childType} not found among children types of parent type ${parentType}`
+      `Child type ${String(
+        childType
+      )} not found among children types of parent type ${String(parentType)}`
     );
   }
   return parentMappings.children[childType]!;

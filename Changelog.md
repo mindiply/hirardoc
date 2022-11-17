@@ -4,10 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 
+## [0.0.15] - 2022-11-14
+
+### Fixes
+- The three-way merge would delete new children of an element that in the
+  other branch would move to another parent.
+
+## [0.0.14] - 2022-02-26
+
+### Fixes
+- Typing fixes only of EntitiesMaps
+
 ## [0.0.13] - 2021-09-21
 
 ### Changes
-- Weakend type checking functions *isParentedMap* and *isParentedMutableMap*
+- Weakened type checking functions *isParentedMap* and *isParentedMutableMap*
 for performance reasons, given that being maps keeps true the has and get members
 of the interface
 
