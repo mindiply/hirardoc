@@ -1,4 +1,5 @@
 import jsSHA from 'jssha';
+import {omit} from 'lodash';
 import {
   HDocOperation,
   Id,
@@ -6,12 +7,14 @@ import {
   INormalizedDocument
 } from './HTypes';
 import {mutableDocument} from './HDocument';
+import {threeWayMerge} from './HMerge3';
+import {diff} from './HDiff';
 
 export enum HistoryEntryType {
-  OPERATION = 'TimelineOperation',
-  MERGE = 'TimelineMerge',
-  UNDO = 'TimelineUndo',
-  REDO = 'TimelineRedo'
+  OPERATION = 'HistoryOperation',
+  MERGE = 'HistoryMerge',
+  UNDO = 'HistoryUndo',
+  REDO = 'HistoryRedo'
 }
 
 /**
@@ -104,14 +107,12 @@ export type HistoryRecord<MapsInterface, U extends keyof MapsInterface> =
   | HistoryRedoRecord<MapsInterface, U>
   | HistoryMergeRecord<MapsInterface, U>;
 
-function injectCommitIdInOperation<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  T extends HistoryRecord<MapsInterface, U> = HistoryRecord<MapsInterface, U>
->(operation: Omit<T, 'commitId'>): T {
+function commitIdOfOperation<MapsInterface, U extends keyof MapsInterface>(
+  operation: Omit<HistoryRecord<MapsInterface, U>, 'commitId'>
+): string {
   const shaObj = new jsSHA('SHA-512', 'TEXT');
-  shaObj.update(JSON.stringify(operation));
-  return {...operation, commitId: shaObj.getHash('HEX')} as T;
+  shaObj.update(JSON.stringify(omit(operation, 'commitId')));
+  return shaObj.getHash('HEX');
 }
 
 export interface OperationInterpreter<
@@ -134,7 +135,7 @@ function defaultInterpreter<MapsInterface, U extends keyof MapsInterface>(
  * to perform reconciliations of separate diverging versions of the document.
  */
 export interface HistoryDelta<MapsInterface, U extends keyof MapsInterface> {
-  __typaneme: 'HistoryDelta';
+  __typename: 'HistoryDelta';
   fromCommitId: string;
   historyRecords: Array<Omit<HistoryRecord<MapsInterface, U>, 'checkpoint'>>;
 }
@@ -276,6 +277,7 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
   implements HDocHistory<MapsInterface, U>
 {
   private _commitIdsIndexMap: Map<string, number>;
+  private _mergedCommitsIds: Set<string>;
   private _historyEntries: HistoryRecord<MapsInterface, U>[];
   private _operationInterpreter: OperationInterpreter<MapsInterface, U>;
 
@@ -290,19 +292,28 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
   ) {
     this._historyEntries = [];
     this._commitIdsIndexMap = new Map();
+    this._mergedCommitsIds = new Set();
     this._operationInterpreter = operationInterpreter || defaultInterpreter;
     if (Array.isArray(entriesOrDoc)) {
       this._pushHistoryRecords(entriesOrDoc);
     } else {
-      const initOp = injectCommitIdInOperation<MapsInterface, U>({
+      const initOp: Omit<
+        HistoryRecordInitializeRecord<MapsInterface, U>,
+        'commitId'
+      > = {
         __typename: HistoryEntryType.OPERATION,
         previousCommitId: null,
         checkpoint: entriesOrDoc,
         changes: [],
         userId,
-        when: new Date()
-      });
-      this._pushHistoryRecords(initOp);
+        when: new Date(),
+        operation: {
+          __typename: 'InitializeHistoryWithDocumentOperation',
+          document: entriesOrDoc
+        }
+      };
+      const commitId = commitIdOfOperation<MapsInterface, U>(initOp);
+      this._pushHistoryRecords({...initOp, commitId});
     }
   }
 
@@ -379,17 +390,20 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
     for (const op of operations) {
       this._operationInterpreter(mutableDoc, op);
     }
-    const operationRecord = injectCommitIdInOperation({
+    const operationRecord: Omit<
+      HistoryOperationRecord<MapsInterface, U, Operation>,
+      'commitId'
+    > = {
       __typename: HistoryEntryType.OPERATION,
       operation,
       changes: mutableDoc.changes,
       previousCommitId: this.lastCommitId,
       userId,
       when: new Date(),
-      // @ts-expect-error U can be instantiated to a different type
       checkpoint: mutableDoc.updatedDocument()
-    }) as HistoryOperationRecord<MapsInterface, U, Operation>;
-    this._pushHistoryRecords(operationRecord);
+    };
+    const commitId = commitIdOfOperation(operationRecord);
+    this._pushHistoryRecords({...operationRecord, commitId});
     return operationRecord.checkpoint as INormalizedDocument<MapsInterface, U>;
   };
 
@@ -406,12 +420,78 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
   public generateHistoryDelta = (
     fromCommitId: string,
     toCommitId?: string
-  ): HistoryDelta<MapsInterface, U> => {};
+  ): HistoryDelta<MapsInterface, U> => {
+    const targetCommitId = toCommitId || this.lastCommitId;
+    const fromIndex = this._historyEntries.findIndex(
+      entry => entry.commitId === fromCommitId
+    );
+    if (fromIndex === -1) {
+      throw new RangeError('fromCommitId not found');
+    }
+    const targetIndex = this._historyEntries.findIndex(
+      entry => entry.commitId === targetCommitId
+    );
+    if (targetIndex === -1) {
+      throw new RangeError('toCommitId not found');
+    }
+    if (fromIndex > targetIndex) {
+      throw new RangeError(
+        'The toCommitId happened earlier than the fromCommitId'
+      );
+    }
+    return {
+      __typename: 'HistoryDelta',
+      fromCommitId,
+      historyRecords: this._historyEntries.slice(fromIndex, targetIndex + 1)
+    };
+  };
 
   public mergeHistoryDelta = (
     historyDelta: HistoryDelta<MapsInterface, U>,
     userId?: Id
-  ): INormalizedDocument<MapsInterface, U> => {};
+  ): INormalizedDocument<MapsInterface, U> => {
+    /* Check if we can fast forward the delta passed through */
+    if (this.lastCommitId === historyDelta.fromCommitId) {
+      // We can fast forward, just add the entries from the
+      // delta
+      this._pushHistoryRecords(
+        historyDelta.historyRecords as HistoryRecord<MapsInterface, U>[]
+      );
+      return this.documentAtCommitId();
+    }
+
+    if (!this.hasCommitId(historyDelta.fromCommitId)) {
+      return this.documentAtCommitId();
+    }
+    const {mergeToTree, mergeFromTree, baseTree, nOperationsToApply} =
+      this.generateMergeBranchDelta(historyDelta, this.lastCommitId);
+    if (nOperationsToApply == 0) {
+      return this.documentAtCommitId();
+    }
+    const {mergedDoc} = threeWayMerge(baseTree, mergeFromTree, mergeToTree);
+    const changes = diff(mergeToTree, mergedDoc);
+    const _mergeEntry: Omit<
+      HistoryMergeRecord<MapsInterface, U>,
+      'commitId'
+    > = {
+      __typename: HistoryEntryType.MERGE,
+      userId: userId || null,
+      when: new Date(),
+      changes,
+      previousCommitId: this.lastCommitId,
+      checkpoint: mergedDoc,
+      baseCommitId: historyDelta.fromCommitId,
+      theirOperations: historyDelta.historyRecords as HistoryRecord<
+        MapsInterface,
+        U
+      >[]
+    };
+    this._pushHistoryRecords({
+      ..._mergeEntry,
+      commitId: commitIdOfOperation(_mergeEntry)
+    });
+    return this.documentAtCommitId();
+  };
 
   public redo = (
     userId?: Id | null
@@ -420,6 +500,88 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
   public undo = (
     userId?: Id | null
   ): INormalizedDocument<MapsInterface, U> => {};
+
+  /**
+   * When the timeline is asked to merge a branch delta, it may be
+   * the case that portion of that delta was already merged beforehand
+   * in the timeline.
+   *
+   * This function checks if this is the case. If it is it generates a new
+   * delta that can be applied to the timeline, by modifying the provided delta
+   * to the one that would have been generated if the remote party had known and
+   * merged the existing merge.
+   *
+   * The function assumes that all history entries from and including
+   * timeDelta.fromCommitId are included in the timeline history
+   *
+   * @param {ITimelineDelta} providedMergeDelta
+   * @returns {ITimelineDelta}
+   */
+  private generateMergeBranchDelta = (
+    providedMergeDelta: HistoryDelta<MapsInterface, U>,
+    localToCommitId: string
+  ): {
+    baseTree: INormalizedDocument<MapsInterface, U>;
+    mergeToTree: INormalizedDocument<MapsInterface, U>;
+    mergeFromTree: INormalizedDocument<MapsInterface, U>;
+    lastCommonCommitId: string;
+    nOperationsToApply: number;
+  } => {
+    let lastCommonCommitId = providedMergeDelta.fromCommitId;
+    let containsMergedOperation = false;
+    const operationsToApply: HistoryRecord<MapsInterface, U>[] =
+      providedMergeDelta.historyRecords.slice() as HistoryRecord<
+        MapsInterface,
+        U
+      >[];
+    for (const operation of providedMergeDelta.historyRecords) {
+      if (!this.hasCommitId(operation.commitId)) {
+        break;
+      }
+      operationsToApply.shift();
+      if (this.mergedCommitIds.has(operation.commitId)) {
+        containsMergedOperation = true;
+      }
+      lastCommonCommitId = operation.commitId;
+    }
+    if (
+      lastCommonCommitId === providedMergeDelta.fromCommitId ||
+      !containsMergedOperation
+    ) {
+      // There are no partially merged commits, we can apply
+      // the delta provided
+      const baseTree = this.documentAtCommitId(lastCommonCommitId);
+      const mergeToTree = this.documentAtCommitId(localToCommitId);
+      const mergeFromBranch = this.branch(
+        lastCommonCommitId
+      ) as HDocHistoryImpl<MapsInterface, U>;
+      mergeFromBranch._pushHistoryRecords(operationsToApply);
+      const mergeFromTree = mergeFromBranch.documentAtCommitId();
+      return {
+        baseTree,
+        mergeFromTree,
+        mergeToTree,
+        lastCommonCommitId,
+        nOperationsToApply: operationsToApply.length
+      };
+    }
+    const remoteBranch = this.branch(
+      providedMergeDelta.fromCommitId
+    ) as HDocHistoryImpl<MapsInterface, U>;
+    remoteBranch._pushHistoryRecords(
+      providedMergeDelta.historyRecords as HistoryRecord<MapsInterface, U>[]
+    );
+    const baseTree = remoteBranch.documentAtCommitId(lastCommonCommitId);
+    const mergeToTree = this.documentAtCommitId(localToCommitId);
+    const mergeFromTree = remoteBranch.documentAtCommitId();
+    return {
+      baseTree,
+      mergeToTree,
+      mergeFromTree,
+      lastCommonCommitId,
+      nOperationsToApply: operationsToApply.length
+    };
+  };
 
   private _findClosestCheckpointIndex(commitId: string): number {
     let i = this._commitIdsIndexMap.get(commitId)!;
@@ -445,6 +607,23 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface>
         record.commitId,
         this._historyEntries.length - 1
       );
+      if (record.__typename === HistoryEntryType.MERGE) {
+        this.processMergeOperation(record);
+      }
+    }
+  };
+
+  private processMergeOperation = (
+    mergeOp: HistoryMergeRecord<MapsInterface, U>
+  ) => {
+    if (!(mergeOp && mergeOp.__typename === HistoryEntryType.MERGE)) {
+      return;
+    }
+    for (const mergedOp of mergeOp.theirOperations) {
+      this._mergedCommitsIds.add(mergedOp.commitId);
+      if (mergedOp.__typename === HistoryEntryType.MERGE) {
+        this.processMergeOperation(mergedOp);
+      }
     }
   };
 
