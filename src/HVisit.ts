@@ -79,7 +79,7 @@ function breadthFirstNodes<
   typesToVisit?: Set<U>,
   nodesVisited: Set<string> = new Set()
 ): Array<[U, Id]> {
-  const nodeUid = `${nodeType}:${nodeId}`;
+  const nodeUid = `${String(nodeType)}:${nodeId}`;
   if (nodesVisited.has(nodeUid)) {
     return [];
   } else {
@@ -131,7 +131,7 @@ function depthFirstNodes<
   typesToVisit?: Set<U>,
   nodesVisited: Set<string> = new Set()
 ): Array<[U, Id]> {
-  const nodeUid = `${nodeType}:${nodeId}`;
+  const nodeUid = `${String(nodeType)}:${nodeId}`;
   if (nodesVisited.has(nodeUid)) {
     return [];
   } else {

@@ -190,11 +190,11 @@ A non-trivial conflict object looks like this:
     
 There are two types of conflicts:
 
-1. Field value conflicts, wehre the same field was changed concurrently
-  and it's not clear which the winner should be
+1. Field value conflicts, where the same field was changed concurrently
+   and it's not clear which the winner should be
 2. Positional conflicts, when the same element has been placed in different
   positions in the document hierarchy. These are the more interesting one the library deals
-  with and were hooks are provided to affect how the merge works
+  with and where hooks are provided to affect how the merge works
   
   
 ## Customizing the 3-way merge

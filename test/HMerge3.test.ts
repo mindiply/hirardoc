@@ -7,11 +7,11 @@ import {
   removeParents
 } from './testTypes';
 import {
-  docReducer,
   cloneNormalizedDocument,
   ConflictsMap,
   denormalizeDocument,
   diff,
+  docReducer,
   HDocCommandType,
   MergeStatus,
   threeWayMerge,
@@ -962,5 +962,130 @@ describe('Merging trees', () => {
       Root: new Map()
     };
     expect(conflicts).toMatchObject(expectedConflicts);
+  });
+});
+
+describe('Bug Regression Tests', () => {
+  test('Disappearance of children on move to other parent', () => {
+    const baseTree = docReducer(emptyTestDocument(), [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: [],
+        element: {
+          __typename: 'Node',
+          _id: 'Node1',
+          children: [],
+          isChecked: false,
+          text: 'firstNode',
+          membersIds: [1, 2, 3]
+        }
+      },
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 1],
+        parent: [],
+        element: {
+          __typename: 'Node',
+          _id: 'Node2',
+          children: [],
+          isChecked: false,
+          text: 'secondNode',
+          membersIds: [2, 4]
+        }
+      },
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: ['children', 0],
+        element: {
+          __typename: 'Node',
+          _id: 'Node3',
+          children: [],
+          isChecked: false,
+          text: 'thirdNode',
+          membersIds: [2, 4]
+        }
+      }
+    ]);
+    const leftTree = docReducer(baseTree, [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: ['children', 0, 'children', 0],
+        element: {
+          __typename: 'Node',
+          _id: 'Node4',
+          children: [],
+          isChecked: false,
+          text: 'fourthNode',
+          membersIds: []
+        }
+      },
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 1],
+        parent: ['children', 0, 'children', 0],
+        element: {
+          __typename: 'Node',
+          _id: 'Node5',
+          children: [],
+          isChecked: false,
+          text: 'fifthNode',
+          membersIds: []
+        }
+      }
+    ]);
+    const rightTree = docReducer(baseTree, [
+      {
+        __typename: HDocCommandType.MOVE_ELEMENT,
+        element: ['children', 0, 'children', 0],
+        toParent: ['children', 1],
+        toPosition: ['children', 0]
+      }
+    ]);
+    const {mergedDoc} = threeWayMerge(baseTree, leftTree, rightTree);
+    expect(
+      removeParents(denormalizeDocument(mergedDoc) as IRootNode)
+    ).toMatchObject({
+      __typename: 'Root',
+      _id: 1,
+      createdAt: creationDate,
+      name: 'root',
+      children: [
+        {
+          __typename: 'Node',
+          _id: 'Node1',
+          children: [],
+          text: 'firstNode'
+        },
+        {
+          __typename: 'Node',
+          _id: 'Node2',
+          children: [
+            {
+              __typename: 'Node',
+              _id: 'Node3',
+              children: [
+                {
+                  __typename: 'Node',
+                  _id: 'Node4',
+                  children: [],
+                  text: 'fourthNode'
+                },
+                {
+                  __typename: 'Node',
+                  _id: 'Node5',
+                  children: [],
+                  text: 'fifthNode'
+                }
+              ],
+              text: 'thirdNode'
+            }
+          ],
+          text: 'secondNode'
+        }
+      ]
+    });
   });
 });

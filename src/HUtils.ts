@@ -209,12 +209,14 @@ export function mappedElement<
       | MutableEntitiesMaps<MapsInterface, U>;
   }
   if (!(elementType in maps)) {
-    throw new TypeError(`Element type ${elementType} not found`);
+    throw new TypeError(`Element type ${String(elementType)} not found`);
   }
   const typeMap: ILazyMutableMap<Id, any> | Map<Id, any> = maps[elementType];
   if (!typeMap.has(elementId)) {
     throw new ReferenceError(
-      `Referential integrity: element ${elementType}.${elementId} not found`
+      `Referential integrity: element ${String(
+        elementType
+      )}.${elementId} not found`
     );
   }
   return typeMap.get(elementId)!;
