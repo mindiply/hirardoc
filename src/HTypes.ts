@@ -989,6 +989,23 @@ export interface IMergeOptions<NorDoc extends INormalizedDocument<any, any>> {
   elementsOverrides: MergeOverridesMap<NorDoc, any>;
 }
 
+/**
+ * The signature of a three-way merge function. Allows passing in customized three
+ * way merge functions to the versioning of documents.
+ */
+export interface ThreeWayMergeFn<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  NorDoc extends INormalizedDocument<MapsInterface, U>
+> {
+  (
+    baseDoc: NorDoc,
+    myDoc: NorDoc,
+    theirDoc: NorDoc,
+    options?: IMergeOptions<NorDoc>
+  ): II3MergeResult<NorDoc>;
+}
+
 // Represents a denormalized node, where parentType and
 // parentId are replaced by a parent pointer
 export interface IParentedNode<U = any, P = IParentedNode<any, any>>
