@@ -135,22 +135,17 @@ function commitIdOfOperation<
 export interface OperationInterpreter<
   MapsInterface,
   U extends keyof MapsInterface,
-  HDocument extends INormalizedDocument<MapsInterface, U>,
   Operation = any
 > {
-  (
-    mutableDoc: IMutableDocument<MapsInterface, U, HDocument>,
-    operation: Operation
-  ): void;
+  (mutableDoc: IMutableDocument<MapsInterface, U>, operation: Operation): void;
 }
 
-function defaultInterpreter<
+export function defaultInterpreter<
   MapsInterface,
-  U extends keyof MapsInterface,
-  HDocument extends INormalizedDocument<MapsInterface, U>
+  U extends keyof MapsInterface
 >(
-  mutableDoc: IMutableDocument<MapsInterface, U, HDocument>,
-  operation: HDocOperation<MapsInterface, U>
+  mutableDoc: IMutableDocument<MapsInterface, U>,
+  operation: HDocOperation<MapsInterface, U> | HDocOperation<MapsInterface, U>[]
 ) {
   mutableDoc.applyChanges(operation);
 }
@@ -172,6 +167,27 @@ export interface HistoryDelta<
 }
 
 /**
+ * A normalized document history needs some basic options, unique to the type of
+ * normalized document, in order to operate.
+ *
+ * This interface includes those options.
+ */
+export interface HDocHistoryOptions<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+> {
+  operationInterpreter: OperationInterpreter<MapsInterface, U>;
+  defaultUserId: Id;
+  hDocCheckpointTranslator: HDocCheckpointTranslator<
+    MapsInterface,
+    U,
+    Checkpoint
+  >;
+  mergeFn: ThreeWayMergeFn<MapsInterface, U>;
+}
+
+/**
  * Minimal interface of a hierarchical document history.
  *
  * It includes only basic operations, no merge, no branching, just add changes
@@ -184,24 +200,9 @@ export interface HistoryDelta<
 export interface HBaseDocHistory<
   MapsInterface,
   U extends keyof MapsInterface,
-  Checkpoint,
-  HDocument extends INormalizedDocument<MapsInterface, U>,
-  Operation = any
+  Checkpoint
 > {
-  /**
-   * An operation interpreter is used when the user wants to change the document.
-   * The client code can provide an operationInterpreter when instantiating the HDocHistory
-   * instead of relying on the default interpreter, if they want to provide higher level logic
-   * that uses a mutableDocument to summarize the changes of this higher level logic.
-   *
-   * The default interpreter only understands the four basic HDocOperations.
-   */
-  readonly operationInterpreter: OperationInterpreter<
-    MapsInterface,
-    U,
-    HDocument,
-    Operation
-  >;
+  readonly hDocHistoryOptions: HDocHistoryOptions<MapsInterface, U, Checkpoint>;
 
   /**
    * Allows to check if the commitId is among those stored in the HDocHistory.
@@ -259,14 +260,14 @@ export interface HBaseDocHistory<
   commit: <Operation>(
     operation: Operation | Operation[],
     userId?: Id | null
-  ) => HDocument;
+  ) => INormalizedDocument<MapsInterface, U>;
 
   /**
    * If the last historyEntry that changed the document was an undo command, it will redo
    * the command that the undo undid.
    * @param userId
    */
-  redo: (userId: Id | null) => HDocument;
+  redo: (userId: Id | null) => INormalizedDocument<MapsInterface, U>;
 
   /**
    * Returns true if there is at least an undo we can currently redo at the tip
@@ -281,7 +282,7 @@ export interface HBaseDocHistory<
    * it will undo the changes of that record and record here what the state was before that change.
    * @param userId
    */
-  undo: (userId: Id | null) => HDocument;
+  undo: (userId: Id | null) => INormalizedDocument<MapsInterface, U>;
 
   /**
    * Returns true if we can undo at least one operation in the current timeline
@@ -297,7 +298,9 @@ export interface HBaseDocHistory<
    * returns the document as of the lastCommitId.
    * @param commitId
    */
-  documentAtCommitId: (commitId?: string) => HDocument;
+  documentAtCommitId: (
+    commitId?: string
+  ) => INormalizedDocument<MapsInterface, U>;
 }
 
 /**
@@ -311,17 +314,16 @@ export interface HDocHistory<
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint,
-  HDocument extends INormalizedDocument<MapsInterface, U>,
   Operation = any
-> extends HBaseDocHistory<MapsInterface, U, Checkpoint, HDocument, Operation> {
+> extends HBaseDocHistory<MapsInterface, U, Checkpoint> {
   /**
    * Creates a new [HDocHistory] that goes from the first historyEntry up to and including
-   * fromCommitId. If fromCommitId is not provided, it will use lastCommitId.
-   * @param fromCommitId
+   * toCommitId. If toCommitId is not provided, it will use lastCommitId.
+   * @param toCommitId
    */
   branch: (
-    fromCommitId?: string
-  ) => HDocHistory<MapsInterface, U, Checkpoint, HDocument, Operation>;
+    toCommitId?: string
+  ) => HDocHistory<MapsInterface, U, Checkpoint, Operation>;
 
   /**
    * Create a historyDelta object starting from fromCommitId up to and including toCommitId.
@@ -351,80 +353,47 @@ export interface HDocHistory<
 export interface HDocCheckpointTranslator<
   MapsInterface,
   U extends keyof MapsInterface,
-  Checkpoint,
-  HDocument extends INormalizedDocument<MapsInterface, U>
+  Checkpoint
 > {
   hDocToCheckpoint: (doc: INormalizedDocument<MapsInterface, U>) => Checkpoint;
-  checkpointToHDoc: (checkpoint: Checkpoint) => HDocument;
+  checkpointToHDoc: (
+    checkpoint: Checkpoint
+  ) => INormalizedDocument<MapsInterface, U>;
 }
 
-export interface InitHDocOptions<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  Checkpoint,
-  HDocument extends INormalizedDocument<MapsInterface, U>
-> {
-  operationInterpreter?: OperationInterpreter<MapsInterface, U, HDocument>;
-  userId: Id | null;
-  maxOpsBetweenCheckpoints?: number;
-  hDocCheckpointTranslator?: HDocCheckpointTranslator<
-    MapsInterface,
-    U,
-    Checkpoint,
-    HDocument
-  >;
-  mergeFn?: ThreeWayMergeFn<MapsInterface, U, HDocument>;
-}
-
-class HDocHistoryImpl<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  Checkpoint,
-  HDocument extends INormalizedDocument<MapsInterface, U>
-> implements HDocHistory<MapsInterface, U, Checkpoint, HDocument, any>
+class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
+  implements HDocHistory<MapsInterface, U, Checkpoint, any>
 {
+  private _hDocHistoryOptions: HDocHistoryOptions<MapsInterface, U, Checkpoint>;
   private _commitIdsIndexMap: Map<string, number>;
   private _mergedCommitsIds: Set<string>;
   private _historyEntries: HistoryRecord<MapsInterface, U, Checkpoint>[];
-  private readonly _operationInterpreter: OperationInterpreter<
-    MapsInterface,
-    U,
-    HDocument
-  >;
-  private _serializer: HDocCheckpointTranslator<
-    MapsInterface,
-    U,
-    Checkpoint,
-    HDocument
-  >;
   private readonly _maxOpsWithoutCheckpoint: number;
-  private readonly _mergeFn: ThreeWayMergeFn<MapsInterface, U, HDocument>;
 
   constructor(
     entriesOrDoc:
       | INormalizedDocument<MapsInterface, U>
       | HistoryRecord<MapsInterface, U, Checkpoint>[],
-    initProps: InitHDocOptions<MapsInterface, U, Checkpoint, HDocument> = {
-      userId: 'NOTSET'
-    }
+    initProps: Partial<HDocHistoryOptions<MapsInterface, U, Checkpoint>> = {}
   ) {
+    this._hDocHistoryOptions = {
+      defaultUserId: initProps.defaultUserId || 'NOTSET',
+      // @ts-expect-error this being a serializer is an implementation matter
+      hDocCheckpointTranslator: initProps.hDocCheckpointTranslator || this,
+      mergeFn: initProps.mergeFn || threeWayMerge,
+      operationInterpreter: initProps.operationInterpreter || defaultInterpreter
+    };
     this._historyEntries = [];
     this._commitIdsIndexMap = new Map();
     this._mergedCommitsIds = new Set();
-    this._operationInterpreter =
-      initProps.operationInterpreter || defaultInterpreter;
-    // @ts-expect-error treating myself as a serializer is an implementation matter
-    this._serializer = initProps.hDocCheckpointTranslator || this;
-    this._maxOpsWithoutCheckpoint =
-      typeof initProps.maxOpsBetweenCheckpoints === 'number' &&
-      initProps.maxOpsBetweenCheckpoints > 0
-        ? initProps.maxOpsBetweenCheckpoints
-        : 20;
-    this._mergeFn = initProps.mergeFn || threeWayMerge;
+    this._maxOpsWithoutCheckpoint = 20;
     if (Array.isArray(entriesOrDoc)) {
       this._pushHistoryRecords(entriesOrDoc);
     } else {
-      const checkpoint = this._serializer.hDocToCheckpoint(entriesOrDoc);
+      const checkpoint =
+        this._hDocHistoryOptions.hDocCheckpointTranslator.hDocToCheckpoint(
+          entriesOrDoc
+        );
       const initOp: Omit<
         HistoryRecordInitializeRecord<MapsInterface, U, Checkpoint>,
         'commitId'
@@ -433,7 +402,7 @@ class HDocHistoryImpl<
         previousCommitId: null,
         checkpoint,
         changes: [],
-        userId: initProps.userId,
+        userId: this._hDocHistoryOptions.defaultUserId,
         when: new Date(),
         operation: {
           __typename: 'InitializeHistoryWithDocumentOperation',
@@ -447,8 +416,8 @@ class HDocHistoryImpl<
     }
   }
 
-  public get operationInterpreter() {
-    return this._operationInterpreter;
+  public get hDocHistoryOptions() {
+    return this._hDocHistoryOptions;
   }
 
   public get historyEntries() {
@@ -495,7 +464,9 @@ class HDocHistoryImpl<
     return null;
   };
 
-  public documentAtCommitId = (commitId?: string): HDocument => {
+  public documentAtCommitId = (
+    commitId?: string
+  ): INormalizedDocument<MapsInterface, U> => {
     const targetCommitId = commitId || this.lastCommitId;
     const targetCommitIndex = this._commitIdsIndexMap.get(targetCommitId);
     if (targetCommitIndex === undefined) {
@@ -505,15 +476,15 @@ class HDocHistoryImpl<
     if (checkpointIndex < 0) {
       throw new TypeError('Cannot find a checkpoint');
     }
-    const checkpointDoc = this._serializer.checkpointToHDoc(
-      this._historyEntries[checkpointIndex].checkpoint!
-    );
+    const checkpointDoc =
+      this.hDocHistoryOptions.hDocCheckpointTranslator.checkpointToHDoc(
+        this._historyEntries[checkpointIndex].checkpoint!
+      );
     if (targetCommitIndex === checkpointIndex) {
       return checkpointDoc;
     }
     const mutableDoc = mutableDocument(checkpointDoc);
     for (let i = checkpointIndex + 1; i < this._historyEntries.length; i++) {
-      // @ts-expect-error issues with expansion to HDocument, not clear where
       mutableDoc.applyChanges(this._historyEntries[i].changes);
     }
     return mutableDoc.updatedDocument();
@@ -522,13 +493,13 @@ class HDocHistoryImpl<
   public commit = <Operation>(
     operation: Operation | Operation[],
     userId: Id | null = null
-  ): HDocument => {
+  ): INormalizedDocument<MapsInterface, U> => {
     const mutableDoc = mutableDocument(
       this.documentAtCommitId()
-    ) as unknown as IMutableDocument<MapsInterface, U, HDocument>;
+    ) as unknown as IMutableDocument<MapsInterface, U>;
     const operations = Array.isArray(operation) ? operation : [operation];
     for (const op of operations) {
-      this._operationInterpreter(mutableDoc, op);
+      this._hDocHistoryOptions.operationInterpreter(mutableDoc, op);
     }
     const operationRecord: Omit<
       HistoryOperationRecord<MapsInterface, U, Checkpoint, Operation>,
@@ -544,7 +515,9 @@ class HDocHistoryImpl<
     const updatedDocument = mutableDoc.updatedDocument();
     if (this.nOpsSinceLastCheckpoint() >= this._maxOpsWithoutCheckpoint) {
       operationRecord.checkpoint =
-        this._serializer.hDocToCheckpoint(updatedDocument);
+        this.hDocHistoryOptions.hDocCheckpointTranslator.hDocToCheckpoint(
+          updatedDocument
+        );
     }
     const commitId = commitIdOfOperation(operationRecord);
     this._pushHistoryRecords({...operationRecord, commitId});
@@ -553,20 +526,14 @@ class HDocHistoryImpl<
 
   public branch = (
     fromCommitId?: string
-  ): HDocHistory<MapsInterface, U, Checkpoint, HDocument> => {
+  ): HDocHistory<MapsInterface, U, Checkpoint> => {
     const targetCommitId = fromCommitId || this.lastCommitId;
     const commitIndex = this._commitIdsIndexMap.get(targetCommitId);
     if (commitIndex === undefined) {
       throw new RangeError('commitId not found');
     }
     const entries = this._historyEntries.slice(0, commitIndex + 1);
-    // @ts-expect-error U being extension of keyof means possible overlap
-    return new HDocHistoryImpl(entries) as HDocHistory<
-      MapsInterface,
-      U,
-      Checkpoint,
-      HDocument
-    >;
+    return new HDocHistoryImpl(entries);
   };
 
   public generateHistoryDelta = (
@@ -624,7 +591,11 @@ class HDocHistoryImpl<
     if (nOperationsToApply == 0) {
       return this.documentAtCommitId();
     }
-    const {mergedDoc} = this._mergeFn(baseTree, mergeFromTree, mergeToTree);
+    const {mergedDoc} = this._hDocHistoryOptions.mergeFn(
+      baseTree,
+      mergeFromTree,
+      mergeToTree
+    );
     const changes = diff(mergeToTree, mergedDoc);
     const _mergeEntry: Omit<
       HistoryMergeRecord<MapsInterface, U, Checkpoint>,
@@ -643,7 +614,10 @@ class HDocHistoryImpl<
       >[]
     };
     if (this.nOpsSinceLastCheckpoint() >= this._maxOpsWithoutCheckpoint) {
-      _mergeEntry.checkpoint = this._serializer.hDocToCheckpoint(mergedDoc);
+      _mergeEntry.checkpoint =
+        this.hDocHistoryOptions.hDocCheckpointTranslator.hDocToCheckpoint(
+          mergedDoc
+        );
     }
     this._pushHistoryRecords({
       ..._mergeEntry,
@@ -685,7 +659,10 @@ class HDocHistoryImpl<
           changes: diff(undoneTree, redoneTree)
         };
         if (this.nOpsSinceLastCheckpoint() >= this._maxOpsWithoutCheckpoint) {
-          redoCmd.checkpoint = this._serializer.hDocToCheckpoint(redoneTree);
+          redoCmd.checkpoint =
+            this.hDocHistoryOptions.hDocCheckpointTranslator.hDocToCheckpoint(
+              redoneTree
+            );
         }
         this._pushHistoryRecords({
           ...redoCmd,
@@ -722,7 +699,10 @@ class HDocHistoryImpl<
         when: new Date()
       };
       if (this.nOpsSinceLastCheckpoint() >= this._maxOpsWithoutCheckpoint) {
-        undoCmd.checkpoint = this._serializer.hDocToCheckpoint(undoneTree);
+        undoCmd.checkpoint =
+          this.hDocHistoryOptions.hDocCheckpointTranslator.hDocToCheckpoint(
+            undoneTree
+          );
       }
       this._pushHistoryRecords({
         ...undoCmd,
@@ -952,6 +932,10 @@ class HDocHistoryImpl<
 
   private checkpointToHDoc = (checkpoint: Checkpoint) =>
     checkpoint as unknown as INormalizedDocument<MapsInterface, U>;
+
+  public cloneHDocHistory() {
+    return new HDocHistoryImpl(this._historyEntries, this.hDocHistoryOptions);
+  }
 }
 
 export function initHDocHistory<
@@ -962,7 +946,81 @@ export function initHDocHistory<
   documentOrHistoryRecords:
     | INormalizedDocument<MapsInterface, U>
     | HistoryRecord<MapsInterface, U, Checkpoint>[],
-  options: InitHDocOptions<MapsInterface, U, Checkpoint>
+  options: HDocHistoryOptions<MapsInterface, U, Checkpoint>
 ): HDocHistory<MapsInterface, U, Checkpoint> {
   return new HDocHistoryImpl(documentOrHistoryRecords, options);
+}
+
+export function cloneHDocHistory<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  history: HDocHistory<MapsInterface, U, Checkpoint>
+): HDocHistory<MapsInterface, U, Checkpoint> {
+  if (history instanceof HDocHistoryImpl) {
+    return history.cloneHDocHistory();
+  } else {
+    return new HDocHistoryImpl(history.historyEntries);
+  }
+}
+
+export function lastCommonCommitId<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  originHistory: HDocHistory<MapsInterface, U, Checkpoint>,
+  localHistory: HDocHistory<MapsInterface, U, Checkpoint>
+): string | null {
+  let lastCommonCommitId: string | null = null;
+  for (
+    let i = 0;
+    i < localHistory.historyEntries.length &&
+    originHistory.hasCommitId(localHistory.historyEntries[i].commitId);
+    i++
+  ) {
+    lastCommonCommitId = localHistory.historyEntries[i].commitId;
+  }
+  return lastCommonCommitId;
+}
+
+export function pullOriginChangesIntoLocalHistory<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  originHistory: HDocHistory<MapsInterface, U, Checkpoint>,
+  localHistory: HDocHistory<MapsInterface, U, Checkpoint>
+) {
+  const fromCommitId = lastCommonCommitId(originHistory, localHistory);
+  if (!fromCommitId) {
+    throw new RangeError(
+      'No common commit Id between the two document histories'
+    );
+  }
+  const originDelta = originHistory.generateHistoryDelta(fromCommitId);
+  if (!(originDelta && originDelta.historyRecords.length > 0)) {
+    return localHistory;
+  }
+  const localDelta = localHistory.generateHistoryDelta(fromCommitId);
+  if (localDelta && localDelta.historyRecords.length > 0) {
+    // We do need to merge the changes since the last common commit into origin
+    const newLocalHistory = initHDocHistory(
+      originHistory.historyEntries,
+      originHistory.hDocHistoryOptions
+    );
+    newLocalHistory.mergeHistoryDelta(
+      localDelta,
+      localDelta.historyRecords[localDelta.historyRecords.length - 1].userId ||
+        'NOTSET'
+    );
+    return newLocalHistory;
+  } else {
+    // We can replace the local history with the origin one, everything is already in it
+    return initHDocHistory(
+      originHistory.historyEntries,
+      originHistory.hDocHistoryOptions
+    );
+  }
 }

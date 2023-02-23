@@ -1,10 +1,21 @@
 import {
+  defaultInterpreter,
   HBaseDocHistory,
   HDocHistory,
+  HDocHistoryOptions,
   HistoryDelta,
-  InitHDocOptions
+  HistoryRecord,
+  initHDocHistory
 } from './HVersioning';
-import {Id, INormalizedDocument} from './HTypes';
+import {INormalizedDocument} from './HTypes';
+import {
+  ApiRequestStatus,
+  initialSynchedHistoryState,
+  SynchedHistoryAction,
+  synchedHistoryReducer,
+  SynchedHistoryState
+} from './HRemoveVersioningReducers';
+import {threeWayMerge} from './HMerge3';
 
 export enum LocalRemoteEvent {
   LOCAL_RESTORED,
@@ -24,17 +35,6 @@ export interface SynchedClientListener<
   ): void;
 }
 
-export async function pushToOrigin<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  Checkpoint
->(
-  localHistory: HDocHistory<MapsInterface, U, Checkpoint, any>,
-  remoteHistory: HDocHistory<MapsInterface, U, Checkpoint, any>
-): Promise<null | HDocHistory<MapsInterface, U, Checkpoint>> {
-  return localHistory;
-}
-
 interface ClientToRemoteChannel<
   MapsInterface,
   U extends keyof MapsInterface,
@@ -42,7 +42,7 @@ interface ClientToRemoteChannel<
 > {
   cloneRemote: (
     fromCommitId?: string
-  ) => Promise<HDocHistory<MapsInterface, U, Checkpoint>>;
+  ) => Promise<HistoryRecord<MapsInterface, U, Checkpoint>[] | null>;
 
   pushChanges: (
     delta: HistoryDelta<MapsInterface, U, Checkpoint>
@@ -75,13 +75,37 @@ export enum SynchronizationState {
   SYNCHED,
   ERROR
 }
+const nullChannel: ClientToRemoteChannel<any, any, any> = {
+  cloneRemote: async () => null,
+  pullChanges: async () => null,
+  pushChanges: async () => null
+};
+
+interface ClientSynchedHistoryOptions<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+> extends HDocHistoryOptions<MapsInterface, U, Checkpoint> {
+  emptyHDocFactory: () => INormalizedDocument<MapsInterface, U>;
+  clientToRemoteChannel: ClientToRemoteChannel<MapsInterface, U, Checkpoint>;
+  localHistoryStorage: LocalHistoryStorage<MapsInterface, U, Checkpoint>;
+}
+
+const nullLocalHistoryStorage: LocalHistoryStorage<any, any, any> = {
+  restore: async () => null,
+  store: async () => false
+};
 
 interface ClientSynchedWithRemote<
   MapsInterface,
   U extends keyof MapsInterface,
-  Checkpoint,
-  Document extends INormalizedDocument<MapsInterface, U>
+  Checkpoint
 > extends HBaseDocHistory<MapsInterface, U, Checkpoint> {
+  readonly clientOptions: ClientSynchedHistoryOptions<
+    MapsInterface,
+    U,
+    Checkpoint
+  >;
   readonly isInitialized: boolean;
   readonly hadLocalStorageCopy: null | boolean;
   readonly wasOriginCloned: null | boolean;
@@ -100,13 +124,106 @@ interface ClientSynchedWithRemote<
   ) => void;
 }
 
-interface ClientSynchedCreateOptions<
+class ClientSynchedWithRemoteImpl<
   MapsInterface,
   U extends keyof MapsInterface,
-  Checkpoint,
-  Document extends INormalizedDocument<MapsInterface, U>
-> extends InitHDocOptions<MapsInterface, U, Checkpoint> {
-  emptyHDocFactory: () => Document;
-  clientToRemoteChannel: ClientSynchedWithRemote<MapsInterface, U, Checkpoint>;
-  localHistoryStorage?: LocalHistoryStorage<MapsInterface, U, Checkpoint>;
+  Checkpoint
+> implements ClientSynchedWithRemote<MapsInterface, U, Checkpoint>
+{
+  private _synchedOptions: ClientSynchedHistoryOptions<
+    MapsInterface,
+    U,
+    Checkpoint
+  >;
+  private _state: SynchedHistoryState<MapsInterface, U, Checkpoint>;
+  private _dispatch: (
+    action: SynchedHistoryAction<MapsInterface, U, Checkpoint>
+  ) => SynchedHistoryState<MapsInterface, U, Checkpoint>;
+  private _listeners: SynchedClientListener<MapsInterface, U, Checkpoint>[];
+  private _hadLocalStorageCopy: boolean;
+
+  constructor(
+    options: Partial<
+      ClientSynchedHistoryOptions<MapsInterface, U, Checkpoint>
+    > &
+      Pick<
+        ClientSynchedHistoryOptions<MapsInterface, U, Checkpoint>,
+        'emptyHDocFactory'
+      >
+  ) {
+    this._synchedOptions = {
+      defaultUserId: options.defaultUserId || 'NOTSET',
+      // @ts-expect-error this being a serializer is an implementation matter
+      hDocCheckpointTranslator: initProps.hDocCheckpointTranslator || this,
+      mergeFn: options.mergeFn || threeWayMerge,
+      operationInterpreter: options.operationInterpreter || defaultInterpreter,
+      clientToRemoteChannel: options.clientToRemoteChannel || nullChannel,
+      emptyHDocFactory: options.emptyHDocFactory,
+      localHistoryStorage:
+        options.localHistoryStorage || nullLocalHistoryStorage
+    };
+    const emptyHistory = initHDocHistory(
+      this._synchedOptions.emptyHDocFactory(),
+      this._synchedOptions
+    );
+    this._state = initialSynchedHistoryState(emptyHistory);
+    this._hadLocalStorageCopy = false;
+    this._dispatch = action => {
+      const newState = synchedHistoryReducer(this._state, action);
+      if (newState !== this._state) {
+        this._state = newState;
+        // Give a chance to the function to return before reacting to state changes
+        // with side effects
+        setTimeout(this.reactToStateChange, 0);
+      }
+      return this._state;
+    };
+    this._listeners = [];
+  }
+
+  public get isInitialized() {
+    return this._state.localBranch.type === 'InitializedLocalBranchState';
+  }
+
+  public get hadLocalStorageCopy() {
+    return this._hadLocalStorageCopy;
+  }
+
+  public get wasOriginCloned() {
+    return (
+      this._state.originBranch.cloneFetchStatus === ApiRequestStatus.SUCCESS
+    );
+  }
+
+  public get isPushing() {
+    return (
+      this._state.originBranch.pushFetchStatus === ApiRequestStatus.SUBMITTED
+    );
+  }
+
+  public get isPulling() {
+    return (
+      this._state.originBranch.pullFetchStatus === ApiRequestStatus.SUBMITTED
+    );
+  }
+
+  public get remoteChannel() {
+    return this._synchedOptions.clientToRemoteChannel;
+  }
+
+  public get localStorage() {
+    return this._synchedOptions.localHistoryStorage;
+  }
+
+  private notifyListeners = (eventType: LocalRemoteEvent) => {
+    for (const listener of this._listeners) {
+      try {
+        listener(eventType, this);
+      } catch (e) {
+        // not reported, the client is caller is causing troubles
+      }
+    }
+  };
+
+  private reactToStateChange() {}
 }

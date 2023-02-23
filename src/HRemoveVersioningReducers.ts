@@ -2,7 +2,13 @@
  * Reducers for data that represents the local and server timeline history
  * for a specific Timeline board.
  */
-import {HDocHistory, HistoryDelta, HistoryRecord} from './HVersioning';
+import {
+  cloneHDocHistory,
+  HDocHistory,
+  HistoryDelta,
+  HistoryRecord,
+  initHDocHistory
+} from './HVersioning';
 import {Id, INormalizedDocument} from './HTypes';
 
 export enum ApiRequestStatus {
@@ -12,7 +18,7 @@ export enum ApiRequestStatus {
   ERROR = 'error'
 }
 
-export enum TimelineHistoryProviderActionType {
+export enum SynchedHistoryActionType {
   // Calls related to refreshing and initializing the local history
   START_LOCAL_HISTORY_RESTORE = 'START_LOCAL_HISTORY_RESTORE',
   FAIL_LOCAL_HISTORY_RESTORE = 'FAIL_LOCAL_HISTORY_RESTORE',
@@ -45,16 +51,16 @@ export enum TimelineHistoryProviderActionType {
   RESET_TO_INITIALIZATION = 'RESET_TO_INITIALIZATION'
 }
 
-interface BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType;
+interface BaseSynchedClientAction {
+  type: SynchedHistoryActionType;
 }
 
 interface CloneOriginHistoryAction<
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint
-> extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.SET_CLONE_ORIGIN_HISTORY;
+> extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.SET_CLONE_ORIGIN_HISTORY;
   history: HDocHistory<MapsInterface, U, Checkpoint>;
   when: Date;
 }
@@ -63,66 +69,71 @@ interface RestoreLocalHistoryAction<
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint
-> extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.RESTORE_LOCAL_HISTORY;
+> extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.RESTORE_LOCAL_HISTORY;
   originCommitId: string;
   historyEntries: HistoryRecord<MapsInterface, U, Checkpoint>[];
 }
 
-interface ResetToInitialLoadAction extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.RESET_TO_INITIALIZATION;
+interface ResetToInitialLoadAction<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+> extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.RESET_TO_INITIALIZATION;
+  emptyHistory: HDocHistory<MapsInterface, U, Checkpoint>;
 }
 
 interface MergePullFromRemoteAction<
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint
-> extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.MERGE_PULL_ORIGIN_DATA;
+> extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.MERGE_PULL_ORIGIN_DATA;
   delta: HistoryDelta<MapsInterface, U, Checkpoint> | null;
   userId?: Id;
   when: Date;
 }
 
 interface StartLocalHistorySaveToStorageAction {
-  type: TimelineHistoryProviderActionType.START_LOCAL_HISTORY_SAVE;
+  type: SynchedHistoryActionType.START_LOCAL_HISTORY_SAVE;
 }
 
 interface ErrorLocalHistorySaveToStorageAction {
-  type: TimelineHistoryProviderActionType.ERROR_LOCAL_HISTORY_SAVE;
+  type: SynchedHistoryActionType.ERROR_LOCAL_HISTORY_SAVE;
 }
 
 interface CompletedLocalHistorySaveToStorageAction {
-  type: TimelineHistoryProviderActionType.DONE_LOCAL_HISTORY_SAVE;
+  type: SynchedHistoryActionType.DONE_LOCAL_HISTORY_SAVE;
   lastLocalCommitId: string | null;
 }
 
 export interface ApplyLocalCommandAction<Operation>
-  extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.APPLY_LOCAL_COMMAND;
+  extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.APPLY_LOCAL_COMMAND;
   action: Operation;
   userId: Id;
   when: Date;
 }
 
-export interface UndoTimelineCommand extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.UNDO_COMMAND;
+export interface UndoCommand extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.UNDO_COMMAND;
   userId: Id;
   when: Date;
 }
 
-export interface RedoTimelineCommand extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.REDO_COMMAND;
+export interface RedoCommand extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.REDO_COMMAND;
   userId: Id;
   when: Date;
 }
 
-interface RequestLocalHistoryRestoreAction extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.START_LOCAL_HISTORY_RESTORE;
+interface RequestLocalHistoryRestoreAction extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.START_LOCAL_HISTORY_RESTORE;
 }
 
-interface FailLocalHistoryRestoreAction extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.FAIL_LOCAL_HISTORY_RESTORE;
+interface FailLocalHistoryRestoreAction extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.FAIL_LOCAL_HISTORY_RESTORE;
 }
 
 interface BaseLocalBranchState<
@@ -160,7 +171,7 @@ interface NoLocalCopyLocalBranchState<
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint,
-  Operation
+  Operation = any
 > extends BaseLocalBranchState<MapsInterface, U, Checkpoint> {
   type: 'NoLocalCopyLocalBranchState';
   pendingInitialLoadActions: ApplyLocalCommandAction<Operation>[];
@@ -170,14 +181,14 @@ export type LocalBranchState<
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint,
-  Operation
+  Operation = any
 > =
   | UninitializedLocalBranchState<MapsInterface, U, Checkpoint, Operation>
   | InitializedLocalBranchState<MapsInterface, U, Checkpoint>
   | NoLocalCopyLocalBranchState<MapsInterface, U, Checkpoint, Operation>;
 
-interface NoLocalHistoryFoundAction extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.NO_LOCAL_HISTORY_FOUND;
+interface NoLocalHistoryFoundAction extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.NO_LOCAL_HISTORY_FOUND;
 }
 
 type LocalBranchAction<
@@ -190,92 +201,90 @@ type LocalBranchAction<
   | FailLocalHistoryRestoreAction
   | NoLocalHistoryFoundAction
   | ApplyLocalCommandAction<any>
-  | UndoTimelineCommand
-  | RedoTimelineCommand
+  | UndoCommand
+  | RedoCommand
   | StartLocalHistorySaveToStorageAction
   | ErrorLocalHistorySaveToStorageAction
   | CompletedLocalHistorySaveToStorageAction;
 
-const initialLocalBranchState = <
+export const initialLocalBranchState = <
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint,
   Operation
->(): LocalBranchState<MapsInterface, U, Checkpoint, Operation> => ({
+>(
+  emptyHistory: HDocHistory<MapsInterface, U, Checkpoint>
+): LocalBranchState<MapsInterface, U, Checkpoint, Operation> => ({
   type: 'UninitializedLocalBranchState',
   restoreFetchStatus: ApiRequestStatus.IDLE,
-  localHistory: createTimelineHistory([]),
-  currentDocument: emptyTimelineTree(),
+  localHistory: emptyHistory,
+  currentDocument: emptyHistory.documentAtCommitId(),
   pendingInitialLoadActions: []
 });
 
-const localBranchReducer = (
-  state: LocalBranchState | undefined,
-  action: LocalBranchAction
-): LocalBranchState => {
-  const oldState = state || initialLocalBranchState();
-  if (action.type === TimelineHistoryProviderActionType.APPLY_LOCAL_COMMAND) {
+const localBranchReducer = <
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint,
+  Operation
+>(
+  state: LocalBranchState<MapsInterface, U, Checkpoint, Operation>,
+  action: LocalBranchAction<MapsInterface, U, Checkpoint>
+): LocalBranchState<MapsInterface, U, Checkpoint, Operation> => {
+  const oldState = state;
+  if (action.type === SynchedHistoryActionType.APPLY_LOCAL_COMMAND) {
     if (oldState.type === 'InitializedLocalBranchState') {
-      const {userId, when, action: timelineAction} = action;
-      const originalLastCommitId = oldState.localHistory.lastCommitId();
-      const updatedLocalHistory = createTimelineHistory(oldState.localHistory);
-      updatedLocalHistory.commit(
-        updatedLocalHistory.lastCommitId()!,
-        timelineAction,
-        userId,
-        when
-      );
-      return originalLastCommitId === updatedLocalHistory.lastCommitId()
+      const {userId, action: documentAction} = action;
+      const originalLastCommitId = oldState.localHistory.lastCommitId;
+      const updatedLocalHistory = cloneHDocHistory(oldState.localHistory);
+      updatedLocalHistory.commit(documentAction, userId);
+      return originalLastCommitId === updatedLocalHistory.lastCommitId
         ? oldState
         : {
             ...oldState,
             localHistory: updatedLocalHistory,
-            currentDocument: updatedLocalHistory.timelineTreeForCommit()
+            currentDocument: updatedLocalHistory.documentAtCommitId()
           };
     }
-  } else if (action.type === TimelineHistoryProviderActionType.UNDO_COMMAND) {
+  } else if (action.type === SynchedHistoryActionType.UNDO_COMMAND) {
     if (oldState.type === 'InitializedLocalBranchState') {
-      const updatedLocalHistory = createTimelineHistory(oldState.localHistory);
-      const {userId, when} = action;
-      const beforeUndoCommitId = oldState.localHistory.lastCommitId();
-      updatedLocalHistory.undo(userId, when);
-      return beforeUndoCommitId === updatedLocalHistory.lastCommitId()
+      const updatedLocalHistory = cloneHDocHistory(oldState.localHistory);
+      const {userId} = action;
+      const beforeUndoCommitId = oldState.localHistory.lastCommitId;
+      updatedLocalHistory.undo(userId);
+      return beforeUndoCommitId === updatedLocalHistory.lastCommitId
         ? oldState
         : {
             ...oldState,
             localHistory: updatedLocalHistory,
-            currentDocument: updatedLocalHistory.timelineTreeForCommit()
+            currentDocument: updatedLocalHistory.documentAtCommitId()
           };
     }
-  } else if (action.type === TimelineHistoryProviderActionType.REDO_COMMAND) {
-    const updatedLocalHistory = createTimelineHistory(oldState.localHistory);
-    const {userId, when} = action;
-    const beforeRedoCommitId = oldState.localHistory.lastCommitId();
-    updatedLocalHistory.redo(userId, when);
-    return updatedLocalHistory.lastCommitId() === beforeRedoCommitId
+  } else if (action.type === SynchedHistoryActionType.REDO_COMMAND) {
+    const updatedLocalHistory = cloneHDocHistory(oldState.localHistory);
+    const {userId} = action;
+    const beforeRedoCommitId = oldState.localHistory.lastCommitId;
+    updatedLocalHistory.redo(userId);
+    return updatedLocalHistory.lastCommitId === beforeRedoCommitId
       ? oldState
       : {
           ...oldState,
           localHistory: updatedLocalHistory,
-          currentDocument: updatedLocalHistory.timelineTreeForCommit()
+          currentDocument: updatedLocalHistory.documentAtCommitId()
         };
-  } else if (
-    action.type === TimelineHistoryProviderActionType.RESTORE_LOCAL_HISTORY
-  ) {
+  } else if (action.type === SynchedHistoryActionType.RESTORE_LOCAL_HISTORY) {
     if (
       oldState.type === 'UninitializedLocalBranchState' ||
       oldState.type === 'NoLocalCopyLocalBranchState'
     ) {
-      const localBranch = createTimelineHistory(action.historyEntries);
-      if (localBranch.length() > 0) {
+      const localBranch = initHDocHistory(
+        action.historyEntries,
+        oldState.localHistory.hDocHistoryOptions
+      );
+      if (localBranch.historyEntries.length > 0) {
         for (const pendingAction of oldState.pendingInitialLoadActions) {
           try {
-            localBranch.commit(
-              localBranch.lastCommitId(),
-              pendingAction.action,
-              pendingAction.userId,
-              pendingAction.when
-            );
+            localBranch.commit(pendingAction.action, pendingAction.userId);
           } catch (e) {
             console.log('Unable to apply a pending action', e);
           }
@@ -284,7 +293,7 @@ const localBranchReducer = (
           type: 'InitializedLocalBranchState',
           lastOriginCommitId: action.originCommitId,
           localHistory: localBranch,
-          currentDocument: localBranch.timelineTreeForCommit(),
+          currentDocument: localBranch.documentAtCommitId(),
           lastSavedCommitId: null,
           saveRequestStatus: ApiRequestStatus.IDLE
         };
@@ -300,14 +309,12 @@ const localBranchReducer = (
       }
     }
   } else if (
-    action.type === TimelineHistoryProviderActionType.START_LOCAL_HISTORY_SAVE
+    action.type === SynchedHistoryActionType.START_LOCAL_HISTORY_SAVE
   ) {
     if (oldState.type === 'InitializedLocalBranchState') {
       return {...oldState, saveRequestStatus: ApiRequestStatus.SUBMITTED};
     }
-  } else if (
-    action.type === TimelineHistoryProviderActionType.DONE_LOCAL_HISTORY_SAVE
-  ) {
+  } else if (action.type === SynchedHistoryActionType.DONE_LOCAL_HISTORY_SAVE) {
     if (oldState.type === 'InitializedLocalBranchState') {
       return {
         ...oldState,
@@ -316,14 +323,14 @@ const localBranchReducer = (
       };
     }
   } else if (
-    action.type === TimelineHistoryProviderActionType.ERROR_LOCAL_HISTORY_SAVE
+    action.type === SynchedHistoryActionType.ERROR_LOCAL_HISTORY_SAVE
   ) {
     if (oldState.type === 'InitializedLocalBranchState') {
       return {...oldState, saveRequestStatus: ApiRequestStatus.ERROR};
     }
   } else if (
-    action.type === TimelineHistoryProviderActionType.NO_LOCAL_HISTORY_FOUND ||
-    action.type === TimelineHistoryProviderActionType.FAIL_LOCAL_HISTORY_RESTORE
+    action.type === SynchedHistoryActionType.NO_LOCAL_HISTORY_FOUND ||
+    action.type === SynchedHistoryActionType.FAIL_LOCAL_HISTORY_RESTORE
   ) {
     if (oldState.type === 'UninitializedLocalBranchState') {
       return {
@@ -334,8 +341,7 @@ const localBranchReducer = (
       };
     }
   } else if (
-    action.type ===
-    TimelineHistoryProviderActionType.START_LOCAL_HISTORY_RESTORE
+    action.type === SynchedHistoryActionType.START_LOCAL_HISTORY_RESTORE
   ) {
     if (
       oldState.type === 'UninitializedLocalBranchState' &&
@@ -367,8 +373,10 @@ const initialOriginBranchState = <
   MapsInterface,
   U extends keyof MapsInterface,
   Checkpoint
->(): OriginBranchState<MapsInterface, U, Checkpoint> => ({
-  originHistory: createTimelineHistory([]),
+>(
+  emptyHistory: HDocHistory<MapsInterface, U, Checkpoint>
+): OriginBranchState<MapsInterface, U, Checkpoint> => ({
+  originHistory: emptyHistory,
   cloneFetchStatus: ApiRequestStatus.IDLE,
   pullFetchStatus: ApiRequestStatus.IDLE,
   pushFetchStatus: ApiRequestStatus.IDLE,
@@ -377,76 +385,90 @@ const initialOriginBranchState = <
 });
 
 interface StartCloneFromOriginAction {
-  type: TimelineHistoryProviderActionType.START_CLONE_ORIGIN;
+  type: SynchedHistoryActionType.START_CLONE_ORIGIN;
 }
 
 interface ErrorCloneFromOriginAction {
-  type: TimelineHistoryProviderActionType.ERROR_CLONE_ORIGIN;
+  type: SynchedHistoryActionType.ERROR_CLONE_ORIGIN;
 }
 
-interface StartOriginPullAction extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.START_ORIGIN_PULL;
+interface StartOriginPullAction extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.START_ORIGIN_PULL;
   when: Date;
 }
 
-interface ErrorOriginPullAction extends BaseTimelineProviderAction {
-  type: TimelineHistoryProviderActionType.ERROR_ORIGIN_PULL;
+interface ErrorOriginPullAction extends BaseSynchedClientAction {
+  type: SynchedHistoryActionType.ERROR_ORIGIN_PULL;
 }
 
 interface StartPushToRemoteAction {
-  type: TimelineHistoryProviderActionType.START_PUSH_TO_REMOTE;
+  type: SynchedHistoryActionType.START_PUSH_TO_REMOTE;
   when: Date;
 }
 
-interface MergePushedToRemoteAction {
-  type: TimelineHistoryProviderActionType.MERGE_PUSHED_TO_REMOTE;
-  delta: ITimelineDelta;
+interface MergePushedToRemoteAction<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+> {
+  type: SynchedHistoryActionType.MERGE_PUSHED_TO_REMOTE;
+  delta: HistoryDelta<MapsInterface, U, Checkpoint>;
   userId?: Id;
 }
 
 interface ErrorPushToRemoteAction {
-  type: TimelineHistoryProviderActionType.ERROR_PUSH_TO_REMOTE;
+  type: SynchedHistoryActionType.ERROR_PUSH_TO_REMOTE;
 }
 
-type OriginBranchAction =
-  | CloneOriginHistoryAction
-  | MergePullFromRemoteAction
+type OriginBranchAction<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+> =
+  | CloneOriginHistoryAction<MapsInterface, U, Checkpoint>
+  | MergePullFromRemoteAction<MapsInterface, U, Checkpoint>
   | StartCloneFromOriginAction
   | ErrorCloneFromOriginAction
-  | MergePushedToRemoteAction
+  | MergePushedToRemoteAction<MapsInterface, U, Checkpoint>
   | StartOriginPullAction
   | ErrorOriginPullAction
   | StartPushToRemoteAction
   | ErrorPushToRemoteAction;
 
-export const originBranchReducer = (
-  state: OriginBranchState | undefined,
-  action: OriginBranchAction
-): OriginBranchState => {
-  const oldState = state || initialOriginBranchState();
-  if (
-    action.type === TimelineHistoryProviderActionType.SET_CLONE_ORIGIN_HISTORY
-  ) {
+export const originBranchReducer = <
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  state: OriginBranchState<MapsInterface, U, Checkpoint>,
+  action: OriginBranchAction<MapsInterface, U, Checkpoint>
+): OriginBranchState<MapsInterface, U, Checkpoint> => {
+  const oldState = state;
+  if (action.type === SynchedHistoryActionType.SET_CLONE_ORIGIN_HISTORY) {
     return {
       ...oldState,
       originHistory: action.history,
       cloneFetchStatus: ApiRequestStatus.SUCCESS
     };
   } else if (
-    action.type === TimelineHistoryProviderActionType.MERGE_PULL_ORIGIN_DATA ||
-    action.type === TimelineHistoryProviderActionType.MERGE_PUSHED_TO_REMOTE
+    action.type === SynchedHistoryActionType.MERGE_PULL_ORIGIN_DATA ||
+    action.type === SynchedHistoryActionType.MERGE_PUSHED_TO_REMOTE
   ) {
     const {delta} = action;
     let updatedOriginHistory = oldState.originHistory;
 
     // First sanity check on delta and checking we don't already have the delta last commitId in
     // our history
-    if (delta && delta.operations.length > 0) {
-      const lastOperation = delta.operations[delta.operations.length - 1];
+    if (delta && delta.historyRecords.length > 0) {
+      const lastOperation =
+        delta.historyRecords[delta.historyRecords.length - 1];
       if (!oldState.originHistory.hasCommitId(lastOperation.commitId)) {
         if (oldState.originHistory.hasCommitId(delta.fromCommitId)) {
-          updatedOriginHistory = createTimelineHistory(oldState.originHistory);
-          updatedOriginHistory.mergeBranchDeltaToTimeline(
+          updatedOriginHistory = initHDocHistory(
+            oldState.originHistory.historyEntries,
+            oldState.originHistory.hDocHistoryOptions
+          );
+          updatedOriginHistory.mergeHistoryDelta(
             delta,
             lastOperation.userId || action.userId || 'NOTSET'
           );
@@ -457,55 +479,43 @@ export const originBranchReducer = (
       ...oldState,
       originHistory: updatedOriginHistory,
       pullFetchStatus:
-        action.type === TimelineHistoryProviderActionType.MERGE_PULL_ORIGIN_DATA
+        action.type === SynchedHistoryActionType.MERGE_PULL_ORIGIN_DATA
           ? ApiRequestStatus.SUCCESS
           : oldState.pullFetchStatus,
       pushFetchStatus:
-        action.type === TimelineHistoryProviderActionType.MERGE_PUSHED_TO_REMOTE
+        action.type === SynchedHistoryActionType.MERGE_PUSHED_TO_REMOTE
           ? ApiRequestStatus.SUCCESS
           : oldState.pullFetchStatus
     };
-  } else if (
-    action.type === TimelineHistoryProviderActionType.ERROR_CLONE_ORIGIN
-  ) {
+  } else if (action.type === SynchedHistoryActionType.ERROR_CLONE_ORIGIN) {
     return oldState.cloneFetchStatus === ApiRequestStatus.ERROR
       ? oldState
       : {
           ...oldState,
           cloneFetchStatus: ApiRequestStatus.ERROR
         };
-  } else if (
-    action.type === TimelineHistoryProviderActionType.START_CLONE_ORIGIN
-  ) {
+  } else if (action.type === SynchedHistoryActionType.START_CLONE_ORIGIN) {
     return {
       ...oldState,
       cloneFetchStatus: ApiRequestStatus.SUBMITTED
     };
-  } else if (
-    action.type === TimelineHistoryProviderActionType.START_ORIGIN_PULL
-  ) {
+  } else if (action.type === SynchedHistoryActionType.START_ORIGIN_PULL) {
     return {
       ...oldState,
       pullFetchStatus: ApiRequestStatus.SUBMITTED,
       lastPullStartedOn: action.when
     };
-  } else if (
-    action.type === TimelineHistoryProviderActionType.ERROR_ORIGIN_PULL
-  ) {
+  } else if (action.type === SynchedHistoryActionType.ERROR_ORIGIN_PULL) {
     return oldState.pullFetchStatus === ApiRequestStatus.ERROR
       ? oldState
       : {...oldState, pullFetchStatus: ApiRequestStatus.ERROR};
-  } else if (
-    action.type === TimelineHistoryProviderActionType.START_PUSH_TO_REMOTE
-  ) {
+  } else if (action.type === SynchedHistoryActionType.START_PUSH_TO_REMOTE) {
     return {
       ...oldState,
       lastPushStartedOn: action.when,
       pushFetchStatus: ApiRequestStatus.SUBMITTED
     };
-  } else if (
-    action.type === TimelineHistoryProviderActionType.ERROR_PUSH_TO_REMOTE
-  ) {
+  } else if (action.type === SynchedHistoryActionType.ERROR_PUSH_TO_REMOTE) {
     return {
       ...oldState,
       pushFetchStatus: ApiRequestStatus.ERROR
@@ -514,78 +524,107 @@ export const originBranchReducer = (
   return oldState;
 };
 
-export interface TimelineHistoryProviderState {
-  localBranch: LocalBranchState;
-  originBranch: OriginBranchState;
+export interface SynchedHistoryState<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+> {
+  localBranch: LocalBranchState<MapsInterface, U, Checkpoint>;
+  originBranch: OriginBranchState<MapsInterface, U, Checkpoint>;
 }
 
-export const initialTimelineHistoryProviderState =
-  (): TimelineHistoryProviderState => ({
-    localBranch: initialLocalBranchState(),
-    originBranch: initialOriginBranchState()
-  });
+export const initialSynchedHistoryState = <
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  emptyHDocHistory: HDocHistory<MapsInterface, U, Checkpoint>
+): SynchedHistoryState<MapsInterface, U, Checkpoint> => ({
+  localBranch: initialLocalBranchState(emptyHDocHistory),
+  originBranch: initialOriginBranchState(emptyHDocHistory)
+});
 
-type TimelineHistoryProviderAction =
-  | OriginBranchAction
-  | LocalBranchAction
-  | ResetToInitialLoadAction;
+export type SynchedHistoryAction<
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+> =
+  | OriginBranchAction<MapsInterface, U, Checkpoint>
+  | LocalBranchAction<MapsInterface, U, Checkpoint>
+  | ResetToInitialLoadAction<MapsInterface, U, Checkpoint>;
 
-const mergeRemoteChangesIntoLocal = (
-  state: InitializedLocalBranchState,
-  remoteHistory: ITimelineHistory
-): InitializedLocalBranchState => {
+const mergeRemoteChangesIntoLocal = <
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  state: InitializedLocalBranchState<MapsInterface, U, Checkpoint>,
+  remoteHistory: HDocHistory<MapsInterface, U, Checkpoint>
+): InitializedLocalBranchState<MapsInterface, U, Checkpoint> => {
   if (!remoteHistory.hasCommitId(state.lastOriginCommitId)) {
     return state;
   }
   if (
-    !remoteHistory.lastCommitId() ||
-    state.localHistory.hasCommitId(remoteHistory.lastCommitId()!)
+    !remoteHistory.lastCommitId ||
+    state.localHistory.hasCommitId(remoteHistory.lastCommitId!)
   ) {
     return state;
   }
-  if (state.localHistory.lastCommitId() === state.lastOriginCommitId) {
+  if (state.localHistory.lastCommitId === state.lastOriginCommitId) {
     // No local changes, create a clone of origin
     return {
       ...state,
-      localHistory: remoteHistory.branchHistory(remoteHistory.lastCommitId()!),
-      lastOriginCommitId: remoteHistory.lastCommitId()!,
-      currentDocument: remoteHistory.timelineTreeForCommit()
+      localHistory: remoteHistory.branch(remoteHistory.lastCommitId),
+      lastOriginCommitId: remoteHistory.lastCommitId,
+      currentDocument: remoteHistory.documentAtCommitId()
     };
   } else {
-    const localDelta = state.localHistory.generateTimelineDelta(
+    const localDelta = state.localHistory.generateHistoryDelta(
       state.lastOriginCommitId
     );
-    if (localDelta && localDelta.operations.length > 0) {
-      const updatedLocalHistory = createTimelineHistory(remoteHistory);
-      updatedLocalHistory.mergeBranchDeltaToTimeline(
+    if (localDelta && localDelta.historyRecords.length > 0) {
+      const updatedLocalHistory = initHDocHistory(
+        remoteHistory.historyEntries,
+        remoteHistory.hDocHistoryOptions
+      );
+      updatedLocalHistory.mergeHistoryDelta(
         localDelta,
-        localDelta.operations[localDelta.operations.length - 1].userId ||
-          'NOTSET'
+        localDelta.historyRecords[localDelta.historyRecords.length - 1]
+          .userId || 'NOTSET'
       );
       return {
         ...state,
         localHistory: updatedLocalHistory,
-        lastOriginCommitId: remoteHistory.lastCommitId()!,
-        currentDocument: updatedLocalHistory.timelineTreeForCommit()
+        lastOriginCommitId: remoteHistory.lastCommitId,
+        currentDocument: updatedLocalHistory.documentAtCommitId()
       };
     }
   }
   return state;
 };
 
-const initLocalBranchWithOriginBranch = (
-  state: NoLocalCopyLocalBranchState,
-  originBranch: OriginBranchState
-): NoLocalCopyLocalBranchState | InitializedLocalBranchState => {
+const initLocalBranchWithOriginBranch = <
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  state: NoLocalCopyLocalBranchState<MapsInterface, U, Checkpoint>,
+  originBranch: OriginBranchState<MapsInterface, U, Checkpoint>
+):
+  | NoLocalCopyLocalBranchState<MapsInterface, U, Checkpoint>
+  | InitializedLocalBranchState<MapsInterface, U, Checkpoint> => {
   if (
     originBranch.cloneFetchStatus === ApiRequestStatus.SUCCESS &&
-    originBranch.originHistory.length() > 0
+    originBranch.originHistory.historyEntries.length > 0
   ) {
     return {
       type: 'InitializedLocalBranchState',
-      localHistory: createTimelineHistory(originBranch.originHistory),
-      currentDocument: originBranch.originHistory.timelineTreeForCommit(),
-      lastOriginCommitId: originBranch.originHistory.lastCommitId()!,
+      localHistory: initHDocHistory(
+        originBranch.originHistory.historyEntries,
+        originBranch.originHistory.hDocHistoryOptions
+      ),
+      currentDocument: originBranch.originHistory.documentAtCommitId(),
+      lastOriginCommitId: originBranch.originHistory.lastCommitId,
       saveRequestStatus: ApiRequestStatus.IDLE,
       lastSavedCommitId: null
     };
@@ -593,32 +632,34 @@ const initLocalBranchWithOriginBranch = (
   return state;
 };
 
-export const timelineHistoryProviderApp = (
-  state: TimelineHistoryProviderState,
-  action: TimelineHistoryProviderAction
-): TimelineHistoryProviderState => {
+export const synchedHistoryReducer = <
+  MapsInterface,
+  U extends keyof MapsInterface,
+  Checkpoint
+>(
+  state: SynchedHistoryState<MapsInterface, U, Checkpoint>,
+  action: SynchedHistoryAction<MapsInterface, U, Checkpoint>
+): SynchedHistoryState<MapsInterface, U, Checkpoint> => {
   if (action && action.type) {
-    if (
-      action.type === TimelineHistoryProviderActionType.RESET_TO_INITIALIZATION
-    ) {
+    if (action.type === SynchedHistoryActionType.RESET_TO_INITIALIZATION) {
       return {
-        originBranch: initialOriginBranchState(),
-        localBranch: initialLocalBranchState()
+        originBranch: initialOriginBranchState(action.emptyHistory),
+        localBranch: initialLocalBranchState(action.emptyHistory)
       };
     }
     const updatedOriginBranch = originBranchReducer(
       state.originBranch,
-      action as OriginBranchAction
+      action as OriginBranchAction<MapsInterface, U, Checkpoint>
     );
     let updatedLocalBranch = localBranchReducer(
       state.localBranch,
-      action as LocalBranchAction
+      action as LocalBranchAction<MapsInterface, U, Checkpoint>
     );
     if (
       updatedLocalBranch.type === 'InitializedLocalBranchState' &&
       updatedOriginBranch.cloneFetchStatus === ApiRequestStatus.SUCCESS &&
-      updatedOriginBranch.originHistory.lastCommitId() &&
-      updatedOriginBranch.originHistory.lastCommitId() !==
+      updatedOriginBranch.originHistory.lastCommitId &&
+      updatedOriginBranch.originHistory.lastCommitId !==
         updatedLocalBranch.lastOriginCommitId &&
       updatedOriginBranch.originHistory.hasCommitId(
         updatedLocalBranch.lastOriginCommitId
@@ -652,53 +693,6 @@ export const timelineHistoryProviderApp = (
         ...state,
         localBranch: updatedLocalBranch,
         originBranch: updatedOriginBranch
-      };
-    }
-  }
-  return state;
-};
-
-export interface HistoryAction {
-  __typename: 'HistoryAction';
-  timelineId: Id;
-  action: TimelineHistoryProviderAction;
-}
-
-export interface AddTimelineHistoryAction {
-  __typename: 'AddTimelineHistoryAction';
-  timelineId: Id;
-  timelineEntry: TimelineHistoryProviderState;
-}
-
-export type TimelinesHistories = {
-  [timelineId: string]: TimelineHistoryProviderState;
-};
-
-export type TimelinesHistoriesAction = HistoryAction | AddTimelineHistoryAction;
-
-export const timelinesHistoriesReducer = (
-  state: TimelinesHistories,
-  action: TimelinesHistoriesAction
-): TimelinesHistories => {
-  if (action) {
-    if (action.__typename === 'HistoryAction') {
-      const {action: innerAction, timelineId} = action;
-      const existingInnerState = timelineId in state ? state[timelineId] : null;
-      const updatedInnerState = timelineHistoryProviderApp(
-        existingInnerState || initialTimelineHistoryProviderState(),
-        innerAction
-      );
-      if (updatedInnerState !== existingInnerState) {
-        return {...state, [timelineId]: updatedInnerState};
-      }
-    } else if (action.__typename === 'AddTimelineHistoryAction') {
-      const {timelineId, timelineEntry} = action;
-      if (timelineId in state) {
-        return state;
-      }
-      return {
-        ...state,
-        [timelineId]: timelineEntry
       };
     }
   }

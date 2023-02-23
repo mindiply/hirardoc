@@ -995,15 +995,14 @@ export interface IMergeOptions<NorDoc extends INormalizedDocument<any, any>> {
  */
 export interface ThreeWayMergeFn<
   MapsInterface,
-  U extends keyof MapsInterface,
-  NorDoc extends INormalizedDocument<MapsInterface, U>
+  U extends keyof MapsInterface
 > {
   (
-    baseDoc: NorDoc,
-    myDoc: NorDoc,
-    theirDoc: NorDoc,
-    options?: IMergeOptions<NorDoc>
-  ): II3MergeResult<NorDoc>;
+    baseDoc: INormalizedDocument<MapsInterface, U>,
+    myDoc: INormalizedDocument<MapsInterface, U>,
+    theirDoc: INormalizedDocument<MapsInterface, U>,
+    options?: IMergeOptions<INormalizedDocument<MapsInterface, U>>
+  ): II3MergeResult<INormalizedDocument<MapsInterface, U>>;
 }
 
 // Represents a denormalized node, where parentType and
