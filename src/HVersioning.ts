@@ -985,6 +985,19 @@ export function lastCommonCommitId<
   return lastCommonCommitId;
 }
 
+/**
+ * Given a origin document history - the shared truth of the document -
+ * and a local history of changes to the same document, it returns a potentially
+ * new version of the local history that reflects the changes that happened in the remote
+ * repository since the last time the two branches were in synch.
+ *
+ * The function does not change the input parameters, and returns a new object if
+ * they local history is updated.
+ *
+ * @param {HDocHistory<MapsInterface, U, Checkpoint>} originHistory
+ * @param {HDocHistory<MapsInterface, U, Checkpoint>} localHistory
+ * @returns {HDocHistory<MapsInterface, U, Checkpoint>}
+ */
 export function pullOriginChangesIntoLocalHistory<
   MapsInterface,
   U extends keyof MapsInterface,
