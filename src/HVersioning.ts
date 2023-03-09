@@ -1014,6 +1014,7 @@ export function pullOriginChangesIntoLocalHistory<
   }
   const originDelta = originHistory.generateHistoryDelta(fromCommitId);
   if (!(originDelta && originDelta.historyRecords.length > 0)) {
+    // No changes from origin
     return localHistory;
   }
   const localDelta = localHistory.generateHistoryDelta(fromCommitId);
