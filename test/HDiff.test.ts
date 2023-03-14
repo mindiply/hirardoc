@@ -360,7 +360,8 @@ describe('Diffing arrays', () => {
         const elementChange = res.elementChanges[i];
         const expectedObj: ArrayKeepElement = {
           __typename: 'KeepElement',
-          elIndex: i
+          elIndex: i,
+          wasTouched: false
         };
         expect(elementChange).toMatchObject(expectedObj);
       }
@@ -447,7 +448,7 @@ describe('Diffing arrays', () => {
 
   describe('Deep equals function', () => {
     test('No changes on empty array', () => {
-      const res = diffArray([], [], isEqual);
+      const res = diffArray([], [], {equalsFn: isEqual});
       expect(res.changes.length).toBe(0);
       expect(res.elementChanges.length).toBe(0);
     });
@@ -464,7 +465,7 @@ describe('Diffing arrays', () => {
           {n: 2, s: 'world', b: true},
           {n: 3, s: '', b: false}
         ],
-        isEqual
+        {equalsFn: isEqual}
       );
       expect(res.changes.length).toBe(0);
       expect(res.elementChanges.length).toBe(3);
@@ -493,7 +494,7 @@ describe('Diffing arrays', () => {
           {n: 6, s: '', b: false},
           {n: 6, s: '', b: false}
         ],
-        isEqual
+        {equalsFn: isEqual}
       );
       expect(res.changes.length).toBe(4);
       expect(res.changes[0]).toMatchObject({
@@ -538,7 +539,7 @@ describe('Diffing arrays', () => {
           {n: 2, s: 'world', b: true},
           {n: 1, s: 'hello', b: true}
         ],
-        isEqual
+        {equalsFn: isEqual}
       );
       expect(res.changes.length).toBe(2);
       expect(res.changes[0]).toMatchObject({
@@ -568,7 +569,7 @@ describe('Diffing arrays', () => {
           {n: 3, s: '', b: false}
         ],
         [{n: 2, s: 'world', b: true}],
-        isEqual
+        {equalsFn: isEqual}
       );
       expect(res.changes.length).toBe(2);
       expect(res.changes[0]).toMatchObject({
@@ -602,7 +603,7 @@ describe('Diffing arrays', () => {
           {n: 2, s: 'world', b: true},
           {n: 6, s: 'j', b: false}
         ],
-        isEqual
+        {equalsFn: isEqual}
       );
       expect(res.changes.length).toBe(5);
       expect(res.changes[0]).toMatchObject({
@@ -653,7 +654,7 @@ describe('applyArrayDiff', () => {
         {n: 2, s: 'world', b: true},
         {n: 3, s: '', b: false}
       ],
-      isEqual
+      {equalsFn: isEqual}
     );
     expect(
       applyArrayDiff(
@@ -685,7 +686,7 @@ describe('applyArrayDiff', () => {
         {n: 2, s: 'world', b: true},
         {n: 6, s: 'j', b: false}
       ],
-      isEqual
+      {equalsFn: isEqual}
     );
     expect(
       applyArrayDiff(
@@ -719,7 +720,7 @@ describe('applyArrayDiff', () => {
         {n: 2, s: 'world', b: true},
         {n: 1, s: 'hello', b: true}
       ],
-      isEqual
+      {equalsFn: isEqual}
     );
     expect(
       applyArrayDiff(
@@ -751,7 +752,7 @@ describe('applyArrayDiff', () => {
         {n: 2, s: 'world', b: true},
         {n: 1, s: 'hello', b: true}
       ],
-      isEqual
+      {equalsFn: isEqual}
     );
     expect(
       applyArrayDiff(

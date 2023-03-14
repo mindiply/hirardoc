@@ -476,9 +476,24 @@ export interface ArrayDeleteElement {
   elIndex: number;
 }
 
+/**
+ * A keep element change means that the element remained
+ * quiet in the array, while other elements may have changed around it.
+ */
 export interface ArrayKeepElement {
   __typename: 'KeepElement';
+
+  /**
+   * The index of the element in the base array
+   */
   elIndex: number;
+
+  /**
+   * Allows pointing out to a merge that although the element itself didn't change
+   * within the array, something related to it did, and in a three way merge if
+   * the other side was deleted, this element should still be kept
+   */
+  wasTouched: boolean;
 }
 
 export type ArrayChange<T> =
@@ -497,6 +512,10 @@ export interface DiffArrayResult<T> {
 
 export interface EqualFn {
   (a: any, b: any): boolean;
+}
+
+export interface WasTouchedFn<T> {
+  (element: T): boolean;
 }
 
 /**

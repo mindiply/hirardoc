@@ -19,7 +19,8 @@ import {
   IParentedId,
   MappedParentedTypesFields,
   MapsOfNormDoc,
-  UOfNormDoc
+  UOfNormDoc,
+  WasTouchedFn
 } from './HTypes';
 import {mutableDocument, pathForElementWithId} from './HDocument';
 import {isEqual, omit} from 'lodash';
@@ -324,6 +325,7 @@ export function diffInfoOf<
 }
 
 export const defaultEquals = (a: any, b: any) => a === b;
+export const defaultWasTouchedFn = (a: any) => false;
 
 interface BaseElementStatus<T> {
   element: T;
@@ -354,7 +356,13 @@ interface BaseElementStatus<T> {
 export function diffArray<T>(
   base: T[],
   later: T[],
-  equalsFn: EqualFn = defaultEquals
+  {
+    equalsFn = defaultEquals,
+    wasTouchedFn = defaultWasTouchedFn
+  }: {
+    equalsFn?: EqualFn;
+    wasTouchedFn?: WasTouchedFn<T>;
+  } = {}
 ): DiffArrayResult<T> {
   const elementChanges: Array<null | ArrayKeepElement | ArrayChange<T>> = [];
   const changes: ArrayChange<T>[] = [];
@@ -376,7 +384,8 @@ export function diffArray<T>(
       });
       elementChanges.push({
         __typename: 'KeepElement',
-        elIndex: i
+        elIndex: i,
+        wasTouched: wasTouchedFn(base[i])
       });
     } else {
       changes.push({
