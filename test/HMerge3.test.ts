@@ -99,6 +99,19 @@ describe('Merging arrays', () => {
     expect(merged).toEqual(['g', 'd', 'e', 'c', 'f', 'a']);
   });
 
+  test('A deletion of an untouched element prevented with wasTouched', () => {
+    const cWasTouched = (el: string) => el === 'c';
+    const base = ['a', 'b', 'c', 'd', 'e'];
+    const mine = ['e', 'a', 'b', 'c', 'd'];
+    const their = ['a', 'b', 'd', 'e'];
+    const mergedDefault = threeWayMergeArray(base, mine, their);
+    const mergedTouched = threeWayMergeArray(base, mine, their, {
+      wasTouchedFn: cWasTouched
+    });
+    expect(mergedDefault).toEqual(['e', 'a', 'b', 'd']);
+    expect(mergedTouched).toEqual(['e', 'a', 'b', 'c', 'd']);
+  });
+
   test('Parallel conflicting mix of operations with objects', () => {
     const base = [
       {id: 'a', n: 1},
@@ -122,7 +135,7 @@ describe('Merging arrays', () => {
       {id: 'c', n: 3},
       {id: 'a', n: 1}
     ];
-    const merged = threeWayMergeArray(base, mine, their, isEqual);
+    const merged = threeWayMergeArray(base, mine, their, {equalsFn: isEqual});
     expect(merged).toEqual([
       {id: 'g', n: 7},
       {id: 'd', n: 4},
@@ -1087,5 +1100,81 @@ describe('Bug Regression Tests', () => {
         }
       ]
     });
+  });
+
+  test('Deletion of grandparent kept even if adding grandchild on other tree', () => {
+    const baseTree = docReducer(emptyTestDocument(), [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: [],
+        element: {
+          __typename: 'Node',
+          _id: 'Node1',
+          children: [],
+          isChecked: false,
+          text: 'firstNode',
+          membersIds: [1, 2, 3]
+        }
+      },
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: {
+          __typename: 'Node',
+          _id: 'Node1'
+        },
+        element: {
+          __typename: 'Node',
+          _id: 'Node2',
+          children: [],
+          isChecked: false,
+          text: 'childNode',
+          membersIds: [2, 4]
+        }
+      },
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: {
+          __typename: 'Node',
+          _id: 'Node2'
+        },
+        element: {
+          __typename: 'Node',
+          _id: 'Node3',
+          children: [],
+          isChecked: false,
+          text: 'granchild node',
+          membersIds: [2, 4]
+        }
+      }
+    ]);
+    const leftTree = docReducer(baseTree, [
+      {
+        __typename: HDocCommandType.DELETE_ELEMENT,
+        element: {__typename: 'Node', _id: 'Node1'}
+      }
+    ]);
+    const rightTree = docReducer(baseTree, [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: {
+          __typename: 'Node',
+          _id: 'Node3'
+        },
+        element: {
+          __typename: 'Node',
+          _id: 'Node4',
+          children: [],
+          isChecked: false,
+          text: 'Grand grand child node',
+          membersIds: [2, 4]
+        }
+      }
+    ]);
+    const {mergedDoc} = threeWayMerge(baseTree, leftTree, rightTree);
+    expect(mergedDoc.maps['Node'].size).toBe(4);
   });
 });

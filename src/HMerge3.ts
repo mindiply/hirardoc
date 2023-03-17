@@ -1,9 +1,3 @@
-import {
-  diff3Merge,
-  IMergeConflictRegion,
-  IMergeOkRegion,
-  MergeRegion
-} from 'node-diff3';
 import {isEqual} from 'lodash';
 import {
   cloneNormalizedDocument,
@@ -48,15 +42,19 @@ import {
   Path,
   ProcessingOrderFrom,
   SubEntityPathElement,
-  UOfNormDoc
+  UOfNormDoc,
+  WasTouchedFn
 } from './HTypes';
 import {visitDocument} from './HVisit';
 import {
   applyArrayDiff,
-  defaultEquals,
+  ConflictMergeRegion,
   diff,
+  diff3Merge,
   diffArray,
-  diffElementInfo
+  diffElementInfo,
+  MergeRegion,
+  OkMergeRegion
 } from './HDiff';
 import {
   assert,
@@ -78,14 +76,6 @@ function isDataValue(obj: any): obj is DataValue {
     Array.isArray(obj)
   );
 }
-
-// function mergeArrays<T>(
-//   baseValue: T[],
-//   myValue: T[],
-//   theirValue: T[]
-// ): T[] | IValueConflict<T[]> {
-//
-// }
 
 /**
  * Merges atomic values, given a base value, and a
@@ -160,12 +150,9 @@ function mergeDataValues<T extends DataValue>(
     Array.isArray(myValue) &&
     Array.isArray(theirValue)
   ) {
-    mergedValue = threeWayMergeArray(
-      baseValue,
-      myValue,
-      theirValue,
-      isEqual
-    ) as T;
+    mergedValue = threeWayMergeArray(baseValue, myValue, theirValue, {
+      equalsFn: isEqual
+    }) as T;
   } else {
     mergedValue =
       myValue === theirValue && myValue === baseValue
@@ -891,6 +878,7 @@ function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
   ) {
     const [nodeType, nodeId] = nodeQueue.shift()!;
     const {mergeElementInfo} = fnsForElementType(mergeCtx, nodeType);
+
     const baseEl = hasMappedElement(baseDoc.maps, nodeType, nodeId)
       ? (mappedElement(baseDoc.maps, nodeType, nodeId) as IParentedId<
           UOfNormDoc<NorDoc>,
@@ -980,11 +968,11 @@ function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
   return mergedDoc;
 }
 
-function isOkMergeZone(obj: any): obj is IMergeOkRegion<any> {
+function isOkMergeZone(obj: any): obj is OkMergeRegion<any> {
   return obj && obj.ok && Array.isArray(obj.ok);
 }
 
-function isConflictMergeZone(obj: any): obj is IMergeConflictRegion<any> {
+function isConflictMergeZone(obj: any): obj is ConflictMergeRegion<any> {
   return (
     obj &&
     typeof obj.conflict === 'object' &&
@@ -1009,7 +997,6 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
   implements IterableIterator<IProcessingOrderElement>
 {
   private baseArray: Id[];
-  private _mergingArray: Id[];
   private _leftArray: Id[];
   private _rightArray: Id[];
   private mergeZones: MergeRegion<Id>[];
@@ -1036,11 +1023,6 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
           linkedArrayField
         ] as Id[])
       : [];
-    this._mergingArray = (
-      mappedElement(mergeCtx.mergedDoc.maps, parentType, parentId)[
-        linkedArrayField
-      ] as Id[]
-    ).slice();
     this._leftArray = hasMappedElement(
       mergeCtx.myDoc().maps,
       parentType,
@@ -1597,17 +1579,20 @@ export function threeWayMergeArray<T>(
   base: T[],
   mine: T[],
   their: T[],
-  equalsFn: EqualFn = defaultEquals
+  props: {
+    equalsFn?: EqualFn;
+    wasTouchedFn?: WasTouchedFn<T>;
+  } = {}
 ): T[] {
   const {changes: dmChanges, elementChanges: mElChanges} = diffArray(
     base,
     mine,
-    equalsFn
+    props
   );
   const {changes: dtChanges, elementChanges: tElChanges} = diffArray(
     base,
     their,
-    equalsFn
+    props
   );
   assert(
     base.length === mElChanges.length,
@@ -1630,6 +1615,14 @@ export function threeWayMergeArray<T>(
   return applyArrayDiff(base, mergedChanges);
 }
 
+/**
+ * Creates a filter to be applied to a list of changes, that will filter
+ * out the changes that are to be discarded compared to a list of separate
+ * changes from the same base array.
+ *
+ * @param otherChanges
+ * @param winByDefault
+ */
 function createArrayChangeFilter(
   otherChanges: Array<ArrayKeepElement | ArrayChange<any>>,
   winByDefault: boolean
@@ -1672,6 +1665,13 @@ function createArrayChangeFilter(
     } else if (change.__typename === 'DeleteElement') {
       if (otherChange.__typename === 'DeleteElement') {
         return winByDefault;
+      } else if (
+        otherChange.__typename === 'KeepElement' &&
+        otherChange.wasTouched
+      ) {
+        // This allows for an unmoved item in an array, that was somehow otherwise touched,
+        // to be kept even on a deletion
+        return false;
       } else {
         return true;
       }
