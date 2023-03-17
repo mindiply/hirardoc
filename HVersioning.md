@@ -1,4 +1,5 @@
 # HDocuments
+
 HDocuments are structured hierarchical documents that:
 1. Have a discrete number of element types
 2. Have normalized maps, one map for each element type
@@ -58,9 +59,9 @@ The merging strategy for these data fields depends on the data type:
                 Else
                     mergeLinkRecord(base, left, right, nodde, field)
                     addToQueue(node[linkedField])
-              For element in depthFirstVisit(mergedTree)
-                If (element should be deleted in mergedTree)
-                    deleteElement(element)
+        For element in depthFirstVisit(mergedTree)
+          If (element should be deleted in mergedTree)
+              deleteElement(element)
     
     function mergeLinkedArray(base, left, right, nodeType, nodeId, linkedField)
       orderOfEvaluation = sortOn(linkedField, base, left, right, cmpFN)
