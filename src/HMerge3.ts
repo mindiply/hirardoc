@@ -1289,43 +1289,17 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
   const childrenToQueue: Array<[UOfNormDoc<NorDoc>, Id]> = [];
   const parentPath = pathForElementWithId(mergedDoc, parentType, parentId);
   for (
-    let i = 0,
-      il = 0,
-      ir = 0,
-      mergedIndex = 0,
-      nextId = idsToProcessIterator.next();
+    let mergedIndex = 0, nextId = idsToProcessIterator.next();
     !nextId.done;
-    nextId = idsToProcessIterator.next(), i++
+    nextId = idsToProcessIterator.next()
   ) {
     const mergedIndexAtStart = mergedIndex;
     const baseArray = mappedElement(mergedDoc.maps, parentType, parentId)[
       linkedArrayField
     ] as Id[];
-    const leftArray: Id[] = hasMappedElement(
-      mergeCtx.myDoc().maps,
-      parentType,
-      parentId
-    )
-      ? (mappedElement(mergeCtx.myDoc().maps, parentType, parentId)[
-          linkedArrayField
-        ] as Id[])
-      : [];
-    const rightArray: Id[] = hasMappedElement(
-      mergeCtx.theirDoc().maps,
-      parentType,
-      parentId
-    )
-      ? (mappedElement(mergeCtx.theirDoc().maps, parentType, parentId)[
-          linkedArrayField
-        ] as Id[])
-      : [];
     const baseChildId =
       baseArray.length > mergedIndex ? baseArray[mergedIndex] : null;
-    const leftChildId = leftArray.length > il ? leftArray[il] : null;
-    const rightChildId = rightArray.length > ir ? rightArray[ir] : null;
     const {_id: childId, from: childFrom} = nextId.value;
-    if (childId === leftChildId) il++;
-    if (childId === rightChildId) ir++;
     const baseElement = hasMappedElement(mergedDoc.maps, childType, childId)
       ? (mappedElement(mergedDoc.maps, childType, childId) as IParentedId<
           UOfNormDoc<NorDoc>,
@@ -1348,6 +1322,14 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
     if (baseElement) {
       const leftState = myElementsMergeState.get(childUid);
       const rightState = theirElementsMergeState.get(childUid);
+      if (
+        (!leftState || leftState.hasPositionBeenProcessed) &&
+        (!rightState || rightState.hasPositionBeenProcessed)
+      ) {
+        // We only expect an id to appear once in a linked array. If there are
+        // repetitions, we skip them
+        continue;
+      }
       if (
         leftState &&
         leftState.isInEditedPath &&
@@ -1459,6 +1441,14 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
         }
       }
     } else {
+      const elementState =
+        myElementsMergeState.get(childUid) ||
+        theirElementsMergeState.get(childUid);
+      if (!elementState || elementState.hasPositionBeenProcessed) {
+        // We will have been processed already only if the same ID appears more than
+        // once. We do not accept multiple copies of the same id in a linked array.
+        continue;
+      }
       const elementToAdd = (leftElement || rightElement)!;
       addElement(
         elementToAdd,
@@ -1466,10 +1456,8 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
         [linkedArrayField, mergedIndex],
         mergeCtx
       );
-      const elementState =
-        myElementsMergeState.get(childUid) ||
-        theirElementsMergeState.get(childUid);
-      elementState!.hasPositionBeenProcessed = true;
+
+      elementState.hasPositionBeenProcessed = true;
       mergedIndex++;
     }
     if (mergedIndex > mergedIndexAtStart) {
