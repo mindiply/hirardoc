@@ -612,6 +612,11 @@ export interface DiffProps<T> {
   wasTouchedFn?: WasTouchedFn<T>;
 }
 
+interface LcsProps<T> {
+  wasTouchedFn: WasTouchedFn<T>;
+  idFn: IdFn<T>;
+}
+
 // Text diff algorithm following Hunt and McIlroy 1976.
 // J. W. Hunt and M. D. McIlroy, An algorithm for differential buffer
 // comparison, Bell Telephone Laboratories CSTR #41 (1976)
@@ -622,15 +627,32 @@ export interface DiffProps<T> {
 export function longestCommonSequence<T>(
   buffer1: T[],
   buffer2: T[],
-  idFn = defaultIdFn
+  inpProps: Partial<LcsProps<T>> = {}
 ): LcsResult {
-  const equivalenceClasses = new Map<T | string, number[]>();
+  const props: LcsProps<T> = Object.assign(
+    {
+      wasTouchedFn: defaultWasTouchedFn,
+      idFn: defaultIdFn
+    },
+    inpProps
+  );
+  const equivalenceClasses = new Map<
+    T | string,
+    {touched: number[]; unTouched: number[]}
+  >();
   for (let j = 0; j < buffer2.length; j++) {
     const item = buffer2[j];
-    const itemId = idFn(item);
-    const equivalenceClass = equivalenceClasses.get(itemId) || [];
+    const itemId = props.idFn(item);
+    const wasTouched = props.wasTouchedFn(item);
+    const itemClasses = equivalenceClasses.get(itemId) || {
+      touched: [],
+      unTouched: []
+    };
+    const equivalenceClass = wasTouched
+      ? itemClasses.touched
+      : itemClasses.unTouched;
     equivalenceClass.push(j);
-    equivalenceClasses.set(itemId, equivalenceClass);
+    equivalenceClasses.set(itemId, itemClasses);
   }
 
   const NULLRESULT: LcsResult = {
@@ -642,8 +664,15 @@ export function longestCommonSequence<T>(
 
   for (let i = 0; i < buffer1.length; i++) {
     const item = buffer1[i];
-    const itemId = idFn(item);
-    const buffer2indices = equivalenceClasses.get(itemId) || [];
+    const itemId = props.idFn(item);
+    const wasTouched = false;
+    const itemClasses = equivalenceClasses.get(itemId) || {
+      touched: [],
+      unTouched: []
+    };
+    const buffer2indices = wasTouched
+      ? itemClasses.touched
+      : itemClasses.unTouched;
     let r = 0;
     let c = candidates[0];
 
@@ -695,11 +724,19 @@ interface DiffIndicesElement<T> {
   buffer2Content: T[];
 }
 
+interface Diff3Options<T = any> {
+  wasTouchedFn: (val: T, side: 'left' | 'right') => boolean;
+}
+
 // We apply the LCS to give a simple representation of the
 // offsets and lengths of mismatched chunks in the input
 // buffers. This is used by diff3MergeRegions.
-function diffIndices<T>(buffer1: T[], buffer2: T[]): DiffIndicesElement<T>[] {
-  const lcs = longestCommonSequence(buffer1, buffer2);
+function diffIndices<T>(
+  buffer1: T[],
+  buffer2: T[],
+  inpProps?: Partial<LcsProps<T>>
+): DiffIndicesElement<T>[] {
+  const lcs = longestCommonSequence(buffer1, buffer2, inpProps);
   const result: DiffIndicesElement<T>[] = [];
   let tail1 = buffer1.length;
   let tail2 = buffer2.length;
@@ -774,8 +811,15 @@ export type DiffMergeRegion<T> = StableRegion<T> | UnstableRegion<T>;
 export function diff3MergeRegions<T>(
   a: T[],
   o: T[],
-  b: T[]
+  b: T[],
+  inpProps: Partial<Diff3Options> = {}
 ): DiffMergeRegion<T>[] {
+  const props: Diff3Options = Object.assign(
+    {wasTouchedFn: defaultWasTouchedFn},
+    inpProps
+  );
+  const wasATouched = (val: T) => props.wasTouchedFn(val, 'left');
+  const wasBTouched = (val: T) => props.wasTouchedFn(val, 'right');
   // "hunks" are array subsets where `a` or `b` are different from `o`
   // https://www.gnu.org/software/diffutils/manual/html_node/diff3-Hunks.html
   const hunks: Hunk[] = [];
@@ -790,8 +834,12 @@ export function diff3MergeRegions<T>(
     });
   }
 
-  diffIndices(o, a).forEach(item => addHunk(item, 'a'));
-  diffIndices(o, b).forEach(item => addHunk(item, 'b'));
+  diffIndices(o, a, {wasTouchedFn: wasATouched}).forEach(item =>
+    addHunk(item, 'a')
+  );
+  diffIndices(o, b, {wasTouchedFn: wasBTouched}).forEach(item =>
+    addHunk(item, 'b')
+  );
   hunks.sort((x, y) => x.oStart - y.oStart);
 
   const results: DiffMergeRegion<T>[] = [];
@@ -909,7 +957,7 @@ export interface ConflictMergeRegion<T> {
 }
 export type MergeRegion<T> = OkMergeRegion<T> | ConflictMergeRegion<T>;
 
-export interface MergeOptions {
+export interface Diff3MergeOptions<T = any> extends Diff3Options<T> {
   excludeFalseConflicts: boolean;
   stringSeparator: string | RegExp;
 }
@@ -922,12 +970,13 @@ export function diff3Merge<T extends string | Array<any>>(
   inpA: T,
   inpO: T,
   inpB: T,
-  inpOptions: Partial<MergeOptions> = {}
+  inpOptions: Partial<Diff3MergeOptions> = {}
 ): MergeRegion<ArrayElement<T>>[] {
-  const options: MergeOptions = Object.assign(
+  const options: Diff3MergeOptions = Object.assign(
     {
       excludeFalseConflicts: true,
-      stringSeparator: /\s+/
+      stringSeparator: /\s+/,
+      wasTouchedFn: defaultWasTouchedFn
     },
     inpOptions
   );
@@ -943,7 +992,7 @@ export function diff3Merge<T extends string | Array<any>>(
   ) as ArrayElement<T>[];
 
   const results: MergeRegion<ArrayElement<T>>[] = [];
-  const regions = diff3MergeRegions(a, o, b);
+  const regions = diff3MergeRegions(a, o, b, options);
 
   let okBuffer: ArrayElement<T>[] = [];
   function flushOk() {
@@ -961,15 +1010,15 @@ export function diff3Merge<T extends string | Array<any>>(
     return true;
   }
 
-  regions.forEach(region => {
+  for (const region of regions) {
     if (region.stable) {
-      okBuffer.push(...(region.bufferContent as ArrayElement<T>[]));
+      okBuffer.push(...region.bufferContent);
     } else {
       if (
         options.excludeFalseConflicts &&
         isFalseConflict(region.aContent, region.bContent)
       ) {
-        okBuffer.push(...(region.aContent as ArrayElement<T>[]));
+        okBuffer.push(...region.aContent);
       } else {
         flushOk();
         results.push({
@@ -984,7 +1033,7 @@ export function diff3Merge<T extends string | Array<any>>(
         });
       }
     }
-  });
+  }
 
   flushOk();
   return results;

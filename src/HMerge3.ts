@@ -1045,10 +1045,19 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
           ] as Id[]
         ).slice()
       : [];
+    function wasTouched(childId: Id, side: 'left' | 'right'): boolean {
+      const elementState = (
+        side === 'left'
+          ? mergeCtx.myElementsMergeState
+          : mergeCtx.theirElementsMergeState
+      ).get(getElementUid(childType, childId));
+      return Boolean(elementState && elementState.isInEditedPath);
+    }
     this.mergeZones = diff3Merge(
       this._leftArray,
       this.baseArray,
-      this._rightArray
+      this._rightArray,
+      {wasTouchedFn: wasTouched}
     );
   }
 
@@ -1142,7 +1151,7 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
             : null;
           const {cmpSiblings} = fnsForElementType(
             this.mergeCtx,
-            this.parentType
+            this.childType
           );
           const siblingsComparison = cmpSiblings(
             baseEl,

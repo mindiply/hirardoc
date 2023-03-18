@@ -15,8 +15,93 @@ import {
   HDocCommandType,
   MergeStatus,
   threeWayMerge,
-  threeWayMergeArray
+  threeWayMergeArray,
+  diff3Merge
 } from '../src';
+
+describe('Merging buffers', () => {
+  test('No changes', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([{ok: ['a', 'b', 'c', 'd', 'e', 'f']}]);
+  });
+
+  test('Non conflicting changes left', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['q', 'f', 'a', 'c', 'e', 'b', 'q'];
+    const right = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'f', 'a', 'c', 'e', 'b', 'q']}
+    ]);
+  });
+
+  test('Non conflicting changes right', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['q', 'f', 'a', 'c', 'e', 'b', 'q'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'f', 'a', 'c', 'e', 'b', 'q']}
+    ]);
+  });
+
+  test('Non conflicting changes no deletions', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['q', 'a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'f', 'e', 'r'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'a', 'b', 'c', 'd', 'f', 'e', 'r']}
+    ]);
+  });
+
+  test('Non conflicting changes with deletions', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'e'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([{ok: ['b', 'c', 'd', 'e']}]);
+  });
+
+  test('Apparent non-conflict deletion with touched deleted element', () => {
+    const cWasTouched = (val: any) => val === 'c';
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'd', 'e'];
+    const mergeRegions = diff3Merge(left, base, right, {
+      wasTouchedFn: cWasTouched
+    });
+    expect(mergeRegions).toMatchObject([
+      {ok: ['a', 'b']},
+      {conflict: {a: ['c'], o: ['c']}},
+      {ok: ['d', 'e']}
+    ]);
+  });
+
+  test('Conflicting changes', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['q', 'a', 'b', 'd', 'e', 'f'];
+    const right = ['a', 'c', 'd', 'f', 'e', 'r'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'a']},
+      {
+        conflict: {
+          a: ['b'],
+          b: ['c'],
+          o: ['b', 'c'],
+          oIndex: 1,
+          aIndex: 2,
+          bIndex: 1
+        }
+      },
+      {ok: ['d', 'f', 'e', 'r']}
+    ]);
+  });
+});
 
 describe('Merging arrays', () => {
   test('No changes in either branch, keep as is', () => {
@@ -1069,12 +1154,6 @@ describe('Bug Regression Tests', () => {
         {
           __typename: 'Node',
           _id: 'Node1',
-          children: [],
-          text: 'firstNode'
-        },
-        {
-          __typename: 'Node',
-          _id: 'Node2',
           children: [
             {
               __typename: 'Node',
@@ -1093,6 +1172,18 @@ describe('Bug Regression Tests', () => {
                   text: 'fifthNode'
                 }
               ],
+              text: 'thirdNode'
+            }
+          ],
+          text: 'firstNode'
+        },
+        {
+          __typename: 'Node',
+          _id: 'Node2',
+          children: [
+            {
+              __typename: 'Node',
+              children: [],
               text: 'thirdNode'
             }
           ],
