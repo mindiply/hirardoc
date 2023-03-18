@@ -15,8 +15,93 @@ import {
   HDocCommandType,
   MergeStatus,
   threeWayMerge,
-  threeWayMergeArray
+  threeWayMergeArray,
+  diff3Merge
 } from '../src';
+
+describe('Merging buffers', () => {
+  test('No changes', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([{ok: ['a', 'b', 'c', 'd', 'e', 'f']}]);
+  });
+
+  test('Non conflicting changes left', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['q', 'f', 'a', 'c', 'e', 'b', 'q'];
+    const right = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'f', 'a', 'c', 'e', 'b', 'q']}
+    ]);
+  });
+
+  test('Non conflicting changes right', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['q', 'f', 'a', 'c', 'e', 'b', 'q'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'f', 'a', 'c', 'e', 'b', 'q']}
+    ]);
+  });
+
+  test('Non conflicting changes no deletions', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['q', 'a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'f', 'e', 'r'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'a', 'b', 'c', 'd', 'f', 'e', 'r']}
+    ]);
+  });
+
+  test('Non conflicting changes with deletions', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'e'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([{ok: ['b', 'c', 'd', 'e']}]);
+  });
+
+  test('Apparent non-conflict deletion with touched deleted element', () => {
+    const cWasTouched = (val: any) => val === 'c';
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'd', 'e'];
+    const mergeRegions = diff3Merge(left, base, right, {
+      wasTouchedFn: cWasTouched
+    });
+    expect(mergeRegions).toMatchObject([
+      {ok: ['a', 'b']},
+      {conflict: {a: ['c'], o: ['c']}},
+      {ok: ['d', 'e']}
+    ]);
+  });
+
+  test('Conflicting changes', () => {
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['q', 'a', 'b', 'd', 'e', 'f'];
+    const right = ['a', 'c', 'd', 'f', 'e', 'r'];
+    const mergeRegions = diff3Merge(left, base, right);
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'a']},
+      {
+        conflict: {
+          a: ['b'],
+          b: ['c'],
+          o: ['b', 'c'],
+          oIndex: 1,
+          aIndex: 2,
+          bIndex: 1
+        }
+      },
+      {ok: ['d', 'f', 'e', 'r']}
+    ]);
+  });
+});
 
 describe('Merging arrays', () => {
   test('No changes in either branch, keep as is', () => {
@@ -99,6 +184,19 @@ describe('Merging arrays', () => {
     expect(merged).toEqual(['g', 'd', 'e', 'c', 'f', 'a']);
   });
 
+  test('A deletion of an untouched element prevented with wasTouched', () => {
+    const cWasTouched = (el: string) => el === 'c';
+    const base = ['a', 'b', 'c', 'd', 'e'];
+    const mine = ['e', 'a', 'b', 'c', 'd'];
+    const their = ['a', 'b', 'd', 'e'];
+    const mergedDefault = threeWayMergeArray(base, mine, their);
+    const mergedTouched = threeWayMergeArray(base, mine, their, {
+      wasTouchedFn: cWasTouched
+    });
+    expect(mergedDefault).toEqual(['e', 'a', 'b', 'd']);
+    expect(mergedTouched).toEqual(['e', 'a', 'b', 'c', 'd']);
+  });
+
   test('Parallel conflicting mix of operations with objects', () => {
     const base = [
       {id: 'a', n: 1},
@@ -122,7 +220,7 @@ describe('Merging arrays', () => {
       {id: 'c', n: 3},
       {id: 'a', n: 1}
     ];
-    const merged = threeWayMergeArray(base, mine, their, isEqual);
+    const merged = threeWayMergeArray(base, mine, their, {equalsFn: isEqual});
     expect(merged).toEqual([
       {id: 'g', n: 7},
       {id: 'd', n: 4},
@@ -1056,12 +1154,6 @@ describe('Bug Regression Tests', () => {
         {
           __typename: 'Node',
           _id: 'Node1',
-          children: [],
-          text: 'firstNode'
-        },
-        {
-          __typename: 'Node',
-          _id: 'Node2',
           children: [
             {
               __typename: 'Node',
@@ -1083,9 +1175,97 @@ describe('Bug Regression Tests', () => {
               text: 'thirdNode'
             }
           ],
+          text: 'firstNode'
+        },
+        {
+          __typename: 'Node',
+          _id: 'Node2',
+          children: [
+            {
+              __typename: 'Node',
+              children: [],
+              text: 'thirdNode'
+            }
+          ],
           text: 'secondNode'
         }
       ]
     });
+  });
+
+  test('Deletion of grandparent kept even if adding grandchild on other tree', () => {
+    const baseTree = docReducer(emptyTestDocument(), [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: [],
+        element: {
+          __typename: 'Node',
+          _id: 'Node1',
+          children: [],
+          isChecked: false,
+          text: 'firstNode',
+          membersIds: [1, 2, 3]
+        }
+      },
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: {
+          __typename: 'Node',
+          _id: 'Node1'
+        },
+        element: {
+          __typename: 'Node',
+          _id: 'Node2',
+          children: [],
+          isChecked: false,
+          text: 'childNode',
+          membersIds: [2, 4]
+        }
+      },
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: {
+          __typename: 'Node',
+          _id: 'Node2'
+        },
+        element: {
+          __typename: 'Node',
+          _id: 'Node3',
+          children: [],
+          isChecked: false,
+          text: 'granchild node',
+          membersIds: [2, 4]
+        }
+      }
+    ]);
+    const leftTree = docReducer(baseTree, [
+      {
+        __typename: HDocCommandType.DELETE_ELEMENT,
+        element: {__typename: 'Node', _id: 'Node1'}
+      }
+    ]);
+    const rightTree = docReducer(baseTree, [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        position: ['children', 0],
+        parent: {
+          __typename: 'Node',
+          _id: 'Node3'
+        },
+        element: {
+          __typename: 'Node',
+          _id: 'Node4',
+          children: [],
+          isChecked: false,
+          text: 'Grand grand child node',
+          membersIds: [2, 4]
+        }
+      }
+    ]);
+    const {mergedDoc} = threeWayMerge(baseTree, leftTree, rightTree);
+    expect(mergedDoc.maps['Node'].size).toBe(4);
   });
 });
