@@ -9,14 +9,7 @@ export {
   addElementToArrayReducer,
   removeElementFromArrayReducer
 } from './HDocument';
-export {
-  diff,
-  diffInfoOf,
-  diffElementInfo,
-  diffArray,
-  diff3Merge,
-  diff3MergeRegions
-} from './HDiff';
+export {diff, diffInfoOf, diffElementInfo, diffArray} from './HDiff';
 export {visitDocument} from './HVisit';
 export {threeWayMerge, mergeElementInfo, threeWayMergeArray} from './HMerge3';
 export {denormalizeDocument} from './HDenormalize';
@@ -30,3 +23,5 @@ export {
   isId,
   isParentedMutableMap
 } from './HUtils';
+export {diff3Merge} from './bufferDiff3';
+export {diff3MergeRegions} from './bufferDiff3';

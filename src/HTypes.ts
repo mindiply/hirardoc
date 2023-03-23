@@ -1080,3 +1080,11 @@ export interface VisitDocumentOptions<
    */
   typesToTraverse?: U[];
 }
+
+/**
+ * An Id function allows creating a uniquely identifying string for
+ * an element.
+ */
+export interface IdFn<T> {
+  (value: T): string | T;
+}

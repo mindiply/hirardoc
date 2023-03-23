@@ -28,6 +28,18 @@ describe('Merging buffers', () => {
     expect(mergeRegions).toMatchObject([{ok: ['a', 'b', 'c', 'd', 'e', 'f']}]);
   });
 
+  test('No changes, one touched', () => {
+    const leftCTouched = (val: any, side: 'left' | 'right') =>
+      val === 'c' && side === 'left';
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const mergeRegions = diff3Merge(left, base, right, {
+      wasTouchedFn: leftCTouched
+    });
+    expect(mergeRegions).toMatchObject([{ok: ['a', 'b', 'c', 'd', 'e', 'f']}]);
+  });
+
   test('Non conflicting changes left', () => {
     const base = ['a', 'b', 'c', 'd', 'e', 'f'];
     const left = ['q', 'f', 'a', 'c', 'e', 'b', 'q'];
@@ -38,6 +50,22 @@ describe('Merging buffers', () => {
     ]);
   });
 
+  test('Non conflicting changes left, left c touched', () => {
+    const leftCTouched = (val: any, side: 'left' | 'right') =>
+      val === 'c' && side === 'left';
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['q', 'f', 'a', 'c', 'e', 'b', 'q'];
+    const right = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const mergeRegions = diff3Merge(left, base, right, {
+      wasTouchedFn: leftCTouched
+    });
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'f', 'a']},
+      {conflict: {a: ['c'], b: ['b', 'c', 'd'], o: ['b', 'c', 'd']}},
+      {ok: ['e', 'b', 'q']}
+    ]);
+  });
+
   test('Non conflicting changes right', () => {
     const base = ['a', 'b', 'c', 'd', 'e', 'f'];
     const left = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -45,6 +73,21 @@ describe('Merging buffers', () => {
     const mergeRegions = diff3Merge(left, base, right);
     expect(mergeRegions).toMatchObject([
       {ok: ['q', 'f', 'a', 'c', 'e', 'b', 'q']}
+    ]);
+  });
+
+  test('Non conflicting changes right, left touched', () => {
+    const leftFTouched = (val: any, side: 'left' | 'right') =>
+      val === 'f' && side === 'left';
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['q', 'f', 'a', 'c', 'e', 'b', 'q'];
+    const mergeRegions = diff3Merge(left, base, right, {
+      wasTouchedFn: leftFTouched
+    });
+    expect(mergeRegions).toMatchObject([
+      {ok: ['q', 'f', 'a', 'c', 'e']},
+      {conflict: {b: ['b', 'q'], a: ['f'], o: ['f']}}
     ]);
   });
 
@@ -66,8 +109,21 @@ describe('Merging buffers', () => {
     expect(mergeRegions).toMatchObject([{ok: ['b', 'c', 'd', 'e']}]);
   });
 
+  test('No changes, just one element touched', () => {
+    const cWasTouched = (val: any, side: 'left' | 'right') =>
+      val === 'c' && side === 'left';
+    const base = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const left = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const right = ['a', 'b', 'c', 'd', 'e'];
+    const mergeRegions = diff3Merge(left, base, right, {
+      wasTouchedFn: cWasTouched
+    });
+    expect(mergeRegions).toMatchObject([{ok: ['a', 'b', 'c', 'd', 'e']}]);
+  });
+
   test('Apparent non-conflict deletion with touched deleted element', () => {
-    const cWasTouched = (val: any) => val === 'c';
+    const cWasTouched = (val: any, side: 'left' | 'right') =>
+      val === 'c' && side === 'left';
     const base = ['a', 'b', 'c', 'd', 'e', 'f'];
     const left = ['a', 'b', 'c', 'd', 'e', 'f'];
     const right = ['a', 'b', 'd', 'e'];

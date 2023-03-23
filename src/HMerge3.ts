@@ -46,16 +46,7 @@ import {
   WasTouchedFn
 } from './HTypes';
 import {visitDocument} from './HVisit';
-import {
-  applyArrayDiff,
-  ConflictMergeRegion,
-  diff,
-  diff3Merge,
-  diffArray,
-  diffElementInfo,
-  MergeRegion,
-  OkMergeRegion
-} from './HDiff';
+import {applyArrayDiff, diff, diffArray, diffElementInfo} from './HDiff';
 import {
   assert,
   generateNewId,
@@ -64,6 +55,12 @@ import {
   isParentedId,
   mappedElement
 } from './HUtils';
+import {
+  ConflictMergeRegion,
+  diff3Merge,
+  MergeRegion,
+  OkMergeRegion
+} from './bufferDiff3';
 
 type DataValue = string | Date | number | boolean | Array<any>;
 
@@ -1117,7 +1114,7 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
         if (leftId === rightId) {
           nextValue = {
             _id: mergeZone.conflict.a.shift()!,
-            from: ProcessingOrderFrom.left
+            from: ProcessingOrderFrom.both
           };
           mergeZone.conflict.b.shift();
         } else {
@@ -1395,9 +1392,9 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
               [linkedArrayField, mergedIndex],
               mergeCtx
             );
-            leftState.hasPositionBeenProcessed = true;
-            if (rightState) rightState.hasPositionBeenProcessed = true;
           }
+          leftState.hasPositionBeenProcessed = true;
+          if (rightState) rightState.hasPositionBeenProcessed = true;
           mergedIndex++;
         } else if (
           rightState &&
