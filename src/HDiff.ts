@@ -19,12 +19,14 @@ import {
   IParentedId,
   MappedParentedTypesFields,
   MapsOfNormDoc,
-  UOfNormDoc
+  UOfNormDoc,
+  WasTouchedFn
 } from './HTypes';
 import {mutableDocument, pathForElementWithId} from './HDocument';
 import {isEqual, omit} from 'lodash';
 import {visitDocument} from './HVisit';
 import {assert, hasMappedElement, isParentedId, mappedElement} from './HUtils';
+import {defaultWasTouchedFn} from './bufferDiff3';
 
 /**
  * Returns a list of HDocOperations that if applied
@@ -354,7 +356,13 @@ interface BaseElementStatus<T> {
 export function diffArray<T>(
   base: T[],
   later: T[],
-  equalsFn: EqualFn = defaultEquals
+  {
+    equalsFn = defaultEquals,
+    wasTouchedFn = defaultWasTouchedFn
+  }: {
+    equalsFn?: EqualFn;
+    wasTouchedFn?: WasTouchedFn<T>;
+  } = {}
 ): DiffArrayResult<T> {
   const elementChanges: Array<null | ArrayKeepElement | ArrayChange<T>> = [];
   const changes: ArrayChange<T>[] = [];
@@ -376,7 +384,8 @@ export function diffArray<T>(
       });
       elementChanges.push({
         __typename: 'KeepElement',
-        elIndex: i
+        elIndex: i,
+        wasTouched: wasTouchedFn(base[i])
       });
     } else {
       changes.push({

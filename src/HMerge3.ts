@@ -1,9 +1,3 @@
-import {
-  diff3Merge,
-  IMergeConflictRegion,
-  IMergeOkRegion,
-  MergeRegion
-} from 'node-diff3';
 import {isEqual} from 'lodash';
 import {
   cloneNormalizedDocument,
@@ -48,16 +42,11 @@ import {
   Path,
   ProcessingOrderFrom,
   SubEntityPathElement,
-  UOfNormDoc
+  UOfNormDoc,
+  WasTouchedFn
 } from './HTypes';
 import {visitDocument} from './HVisit';
-import {
-  applyArrayDiff,
-  defaultEquals,
-  diff,
-  diffArray,
-  diffElementInfo
-} from './HDiff';
+import {applyArrayDiff, diff, diffArray, diffElementInfo} from './HDiff';
 import {
   assert,
   generateNewId,
@@ -66,6 +55,12 @@ import {
   isParentedId,
   mappedElement
 } from './HUtils';
+import {
+  ConflictMergeRegion,
+  diff3Merge,
+  MergeRegion,
+  OkMergeRegion
+} from './bufferDiff3';
 
 type DataValue = string | Date | number | boolean | Array<any>;
 
@@ -78,14 +73,6 @@ function isDataValue(obj: any): obj is DataValue {
     Array.isArray(obj)
   );
 }
-
-// function mergeArrays<T>(
-//   baseValue: T[],
-//   myValue: T[],
-//   theirValue: T[]
-// ): T[] | IValueConflict<T[]> {
-//
-// }
 
 /**
  * Merges atomic values, given a base value, and a
@@ -160,12 +147,9 @@ function mergeDataValues<T extends DataValue>(
     Array.isArray(myValue) &&
     Array.isArray(theirValue)
   ) {
-    mergedValue = threeWayMergeArray(
-      baseValue,
-      myValue,
-      theirValue,
-      isEqual
-    ) as T;
+    mergedValue = threeWayMergeArray(baseValue, myValue, theirValue, {
+      equalsFn: isEqual
+    }) as T;
   } else {
     mergedValue =
       myValue === theirValue && myValue === baseValue
@@ -891,6 +875,7 @@ function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
   ) {
     const [nodeType, nodeId] = nodeQueue.shift()!;
     const {mergeElementInfo} = fnsForElementType(mergeCtx, nodeType);
+
     const baseEl = hasMappedElement(baseDoc.maps, nodeType, nodeId)
       ? (mappedElement(baseDoc.maps, nodeType, nodeId) as IParentedId<
           UOfNormDoc<NorDoc>,
@@ -980,11 +965,11 @@ function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
   return mergedDoc;
 }
 
-function isOkMergeZone(obj: any): obj is IMergeOkRegion<any> {
+function isOkMergeZone(obj: any): obj is OkMergeRegion<any> {
   return obj && obj.ok && Array.isArray(obj.ok);
 }
 
-function isConflictMergeZone(obj: any): obj is IMergeConflictRegion<any> {
+function isConflictMergeZone(obj: any): obj is ConflictMergeRegion<any> {
   return (
     obj &&
     typeof obj.conflict === 'object' &&
@@ -1009,7 +994,6 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
   implements IterableIterator<IProcessingOrderElement>
 {
   private baseArray: Id[];
-  private _mergingArray: Id[];
   private _leftArray: Id[];
   private _rightArray: Id[];
   private mergeZones: MergeRegion<Id>[];
@@ -1036,11 +1020,6 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
           linkedArrayField
         ] as Id[])
       : [];
-    this._mergingArray = (
-      mappedElement(mergeCtx.mergedDoc.maps, parentType, parentId)[
-        linkedArrayField
-      ] as Id[]
-    ).slice();
     this._leftArray = hasMappedElement(
       mergeCtx.myDoc().maps,
       parentType,
@@ -1063,10 +1042,19 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
           ] as Id[]
         ).slice()
       : [];
+    function wasTouched(childId: Id, side: 'left' | 'right'): boolean {
+      const elementState = (
+        side === 'left'
+          ? mergeCtx.myElementsMergeState
+          : mergeCtx.theirElementsMergeState
+      ).get(getElementUid(childType, childId));
+      return Boolean(elementState && elementState.isInEditedPath);
+    }
     this.mergeZones = diff3Merge(
       this._leftArray,
       this.baseArray,
-      this._rightArray
+      this._rightArray,
+      {wasTouchedFn: wasTouched}
     );
   }
 
@@ -1126,7 +1114,7 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
         if (leftId === rightId) {
           nextValue = {
             _id: mergeZone.conflict.a.shift()!,
-            from: ProcessingOrderFrom.left
+            from: ProcessingOrderFrom.both
           };
           mergeZone.conflict.b.shift();
         } else {
@@ -1160,7 +1148,7 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
             : null;
           const {cmpSiblings} = fnsForElementType(
             this.mergeCtx,
-            this.parentType
+            this.childType
           );
           const siblingsComparison = cmpSiblings(
             baseEl,
@@ -1307,43 +1295,17 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
   const childrenToQueue: Array<[UOfNormDoc<NorDoc>, Id]> = [];
   const parentPath = pathForElementWithId(mergedDoc, parentType, parentId);
   for (
-    let i = 0,
-      il = 0,
-      ir = 0,
-      mergedIndex = 0,
-      nextId = idsToProcessIterator.next();
+    let mergedIndex = 0, nextId = idsToProcessIterator.next();
     !nextId.done;
-    nextId = idsToProcessIterator.next(), i++
+    nextId = idsToProcessIterator.next()
   ) {
     const mergedIndexAtStart = mergedIndex;
     const baseArray = mappedElement(mergedDoc.maps, parentType, parentId)[
       linkedArrayField
     ] as Id[];
-    const leftArray: Id[] = hasMappedElement(
-      mergeCtx.myDoc().maps,
-      parentType,
-      parentId
-    )
-      ? (mappedElement(mergeCtx.myDoc().maps, parentType, parentId)[
-          linkedArrayField
-        ] as Id[])
-      : [];
-    const rightArray: Id[] = hasMappedElement(
-      mergeCtx.theirDoc().maps,
-      parentType,
-      parentId
-    )
-      ? (mappedElement(mergeCtx.theirDoc().maps, parentType, parentId)[
-          linkedArrayField
-        ] as Id[])
-      : [];
     const baseChildId =
       baseArray.length > mergedIndex ? baseArray[mergedIndex] : null;
-    const leftChildId = leftArray.length > il ? leftArray[il] : null;
-    const rightChildId = rightArray.length > ir ? rightArray[ir] : null;
     const {_id: childId, from: childFrom} = nextId.value;
-    if (childId === leftChildId) il++;
-    if (childId === rightChildId) ir++;
     const baseElement = hasMappedElement(mergedDoc.maps, childType, childId)
       ? (mappedElement(mergedDoc.maps, childType, childId) as IParentedId<
           UOfNormDoc<NorDoc>,
@@ -1366,6 +1328,14 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
     if (baseElement) {
       const leftState = myElementsMergeState.get(childUid);
       const rightState = theirElementsMergeState.get(childUid);
+      if (
+        (!leftState || leftState.hasPositionBeenProcessed) &&
+        (!rightState || rightState.hasPositionBeenProcessed)
+      ) {
+        // We only expect an id to appear once in a linked array. If there are
+        // repetitions, we skip them
+        continue;
+      }
       if (
         leftState &&
         leftState.isInEditedPath &&
@@ -1422,9 +1392,9 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
               [linkedArrayField, mergedIndex],
               mergeCtx
             );
-            leftState.hasPositionBeenProcessed = true;
-            if (rightState) rightState.hasPositionBeenProcessed = true;
           }
+          leftState.hasPositionBeenProcessed = true;
+          if (rightState) rightState.hasPositionBeenProcessed = true;
           mergedIndex++;
         } else if (
           rightState &&
@@ -1477,6 +1447,14 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
         }
       }
     } else {
+      const elementState =
+        myElementsMergeState.get(childUid) ||
+        theirElementsMergeState.get(childUid);
+      if (!elementState || elementState.hasPositionBeenProcessed) {
+        // We will have been processed already only if the same ID appears more than
+        // once. We do not accept multiple copies of the same id in a linked array.
+        continue;
+      }
       const elementToAdd = (leftElement || rightElement)!;
       addElement(
         elementToAdd,
@@ -1484,10 +1462,8 @@ function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
         [linkedArrayField, mergedIndex],
         mergeCtx
       );
-      const elementState =
-        myElementsMergeState.get(childUid) ||
-        theirElementsMergeState.get(childUid);
-      elementState!.hasPositionBeenProcessed = true;
+
+      elementState.hasPositionBeenProcessed = true;
       mergedIndex++;
     }
     if (mergedIndex > mergedIndexAtStart) {
@@ -1597,17 +1573,20 @@ export function threeWayMergeArray<T>(
   base: T[],
   mine: T[],
   their: T[],
-  equalsFn: EqualFn = defaultEquals
+  props: {
+    equalsFn?: EqualFn;
+    wasTouchedFn?: WasTouchedFn<T>;
+  } = {}
 ): T[] {
   const {changes: dmChanges, elementChanges: mElChanges} = diffArray(
     base,
     mine,
-    equalsFn
+    props
   );
   const {changes: dtChanges, elementChanges: tElChanges} = diffArray(
     base,
     their,
-    equalsFn
+    props
   );
   assert(
     base.length === mElChanges.length,
@@ -1630,6 +1609,14 @@ export function threeWayMergeArray<T>(
   return applyArrayDiff(base, mergedChanges);
 }
 
+/**
+ * Creates a filter to be applied to a list of changes, that will filter
+ * out the changes that are to be discarded compared to a list of separate
+ * changes from the same base array.
+ *
+ * @param otherChanges
+ * @param winByDefault
+ */
 function createArrayChangeFilter(
   otherChanges: Array<ArrayKeepElement | ArrayChange<any>>,
   winByDefault: boolean
@@ -1672,6 +1659,13 @@ function createArrayChangeFilter(
     } else if (change.__typename === 'DeleteElement') {
       if (otherChange.__typename === 'DeleteElement') {
         return winByDefault;
+      } else if (
+        otherChange.__typename === 'KeepElement' &&
+        otherChange.wasTouched
+      ) {
+        // This allows for an unmoved item in an array, that was somehow otherwise touched,
+        // to be kept even on a deletion
+        return false;
       } else {
         return true;
       }

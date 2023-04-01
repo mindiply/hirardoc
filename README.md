@@ -199,4 +199,4 @@ There are two types of conflicts:
   
 ## Customizing the 3-way merge
 
-To be documented
+To be documented. Using some code from node-diff3 to avoid package dependency.

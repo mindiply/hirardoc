@@ -23,3 +23,5 @@ export {
   isId,
   isParentedMutableMap
 } from './HUtils';
+export {diff3Merge} from './bufferDiff3';
+export {diff3MergeRegions} from './bufferDiff3';

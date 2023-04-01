@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
 
+## [0.0.16] - 2023-03-17
+
+### Fixes
+- In the three-way merge, if you add elements to a node, while you delete that node
+in another version, the node gets deleted after the merge
+
 ## [0.0.15] - 2022-11-14
 
 ### Fixes
