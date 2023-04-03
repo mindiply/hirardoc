@@ -5,10 +5,12 @@ import {
   IParentedNode,
   TreeNode,
   LinkType,
-  NodeLink
+  NodeLink,
+  CompactTreeNode,
+  NodesDefOfDoc
 } from './HTypes';
 import {visitDocument} from './HVisit';
-import {isElementId, mappedElement} from './HUtils';
+import {extractElementId, isElementId, mappedElement} from './HUtils';
 
 const elementUid = <U>(elementType: U, elementId: Id) =>
   `${elementType}:${elementId}`;
@@ -41,7 +43,9 @@ export function denormalizeDocument<
       const nodeDef = doc.schema.nodeTypes[nodeType];
       for (const fieldName in nodeDef.children) {
         const linkProps = nodeDef.children[fieldName];
-        const elementLink = element[fieldName] as NodeLink<keyof NodesDef>;
+        const elementLink = element.children[fieldName] as NodeLink<
+          keyof NodesDef
+        >;
         if (linkProps === LinkType.single) {
           if (elementLink === null) {
             denormalizedNode[fieldName as keyof typeof denormalizedNode] = null;
@@ -87,4 +91,23 @@ export function denormalizeDocument<
     }
   );
   return nodes.get(elementUid(doc.rootId.__typename, doc.rootId._id))!;
+}
+
+export function compactTreeNode<
+  NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>,
+  NodeType extends keyof NodesDef,
+  NodeData,
+  ChildrenFields extends Record<any, NodeLink<keyof NodesDef>>,
+  LinksFields extends Record<any, NodeLink<keyof NodesDef>>
+>(
+  node: TreeNode<NodesDef, NodeType, NodeData, ChildrenFields, LinksFields>
+): CompactTreeNode<NodesDef, NodeType, NodeData, ChildrenFields, LinksFields> {
+  return Object.assign(
+    {},
+    extractElementId(node),
+    node.data,
+    node.children,
+    node.links,
+    {parent: node.parent}
+  );
 }

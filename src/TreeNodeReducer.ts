@@ -1,7 +1,6 @@
 import {
   ChangeElement,
   ElementId,
-  LinkType,
   NodeChildrenOfTreeNode,
   NodeLink,
   TreeNode
@@ -16,20 +15,20 @@ import {
 interface AddNodeToLinkFieldAction<ParentField, ToNodeType> {
   __typename: 'AddNodeToLinkField';
   parentField: ParentField;
-  nodeId: ElementId<ToNodeType>;
+  childNodeId: ElementId<ToNodeType>;
   atIndex?: number;
 }
 
 interface RemoveNodeFromLinkFieldAction<ParentField, NodeType> {
   __typename: 'RemoveNodeFromLinkField';
   parentField: ParentField;
-  nodeId: ElementId<NodeType>;
+  childNodeId: ElementId<NodeType>;
 }
 
 interface MoveNodeWithinLinkFieldAction<ParentField, NodeType> {
   __typename: 'MoveNodeWithinLinkField';
   parentField: ParentField;
-  nodeId: ElementId<NodeType>;
+  childNodeId: ElementId<NodeType>;
   toIndex: number;
 }
 
@@ -47,15 +46,15 @@ function nodeLinkReducer<T>(
   }
   if (state instanceof Map) {
     if (action.__typename === 'AddNodeToLinkField') {
-      const nodeIId = iidToStr(action.nodeId);
+      const nodeIId = iidToStr(action.childNodeId);
       if (state.has(nodeIId)) {
         return state;
       }
       const newState = new Map(state);
-      newState.set(nodeIId, extractElementId(action.nodeId));
+      newState.set(nodeIId, extractElementId(action.childNodeId));
       return newState;
     } else if (action.__typename === 'RemoveNodeFromLinkField') {
-      const nodeIId = iidToStr(action.nodeId);
+      const nodeIId = iidToStr(action.childNodeId);
       if (!state.has(nodeIId)) {
         return state;
       }
@@ -68,8 +67,8 @@ function nodeLinkReducer<T>(
       if (
         state.findIndex(
           existingIId =>
-            existingIId.__typename === action.nodeId.__typename &&
-            existingIId._id === action.nodeId._id
+            existingIId.__typename === action.childNodeId.__typename &&
+            existingIId._id === action.childNodeId._id
         ) !== -1
       ) {
         return state;
@@ -80,9 +79,9 @@ function nodeLinkReducer<T>(
       }
       const newState = state.slice();
       if (atIndex === newState.length) {
-        newState.push(extractElementId(action.nodeId));
+        newState.push(extractElementId(action.childNodeId));
       } else {
-        newState.splice(atIndex, 0, extractElementId(action.nodeId));
+        newState.splice(atIndex, 0, extractElementId(action.childNodeId));
       }
       return newState;
     } else if (action.__typename === 'MoveNodeWithinLinkField') {
@@ -90,7 +89,7 @@ function nodeLinkReducer<T>(
         throw new RangeError('Incorrect target index to move node to');
       }
       const currentIndex = state.findIndex(nodeIId =>
-        elementIdsEquals(nodeIId, action.nodeId)
+        elementIdsEquals(nodeIId, action.childNodeId)
       );
       if (currentIndex === -1) {
         throw new TypeError('Requested node to move not found');
@@ -98,12 +97,12 @@ function nodeLinkReducer<T>(
       let newState = state;
       if (currentIndex !== action.toIndex) {
         newState = state.slice();
-        newState.splice(action.toIndex, 0, action.nodeId);
+        newState.splice(action.toIndex, 0, action.childNodeId);
       }
       return newState;
     } else if (action.__typename === 'RemoveNodeFromLinkField') {
       const currentIndex = state.findIndex(nodeIId =>
-        elementIdsEquals(nodeIId, action.nodeId)
+        elementIdsEquals(nodeIId, action.childNodeId)
       );
       if (currentIndex === -1) {
         // We don't throw an error because the end state is what we would have wished for
@@ -115,10 +114,10 @@ function nodeLinkReducer<T>(
     }
   } else if (state === null || isElementId(state)) {
     if (action.__typename === 'AddNodeToLinkField') {
-      if (state && elementIdsEquals(action.nodeId, state)) {
+      if (state && elementIdsEquals(action.childNodeId, state)) {
         return state;
       } else {
-        return extractElementId(action.nodeId);
+        return extractElementId(action.childNodeId);
       }
     } else if (action.__typename === 'RemoveNodeFromLinkField') {
       if (state !== null) {
@@ -136,9 +135,14 @@ function nodeChildrenReducer<
     keyof NodesDef,
     TreeNode<NodesDef, keyof NodesDef, any, any, any>
   >,
-  N extends keyof NodesDef,
-  K extends keyof NodeChildrenOfTreeNode<NodesDef, N>
->(state: NodesDef[N], action: LinkFieldAction<K, N>): NodesDef[N] {
+  N extends keyof NodesDef
+>(
+  state: NodeChildrenOfTreeNode<NodesDef, N>,
+  action: LinkFieldAction<
+    keyof NodeChildrenOfTreeNode<NodesDef, N>,
+    keyof NodesDef
+  >
+): NodeChildrenOfTreeNode<NodesDef, N> {
   if (!(action && action.__typename)) {
     return state;
   }
@@ -153,7 +157,15 @@ function nodeChildrenReducer<
   return state;
 }
 
-type TreeNodeAction = LinkFieldAction<any, any> | ChangeElement<any>;
+type TreeNodeAction<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  N extends keyof NodesDef
+> =
+  | LinkFieldAction<keyof NodeChildrenOfTreeNode<NodesDef, N>, keyof NodesDef>
+  | ChangeElement<NodesDef, N>;
 
 export function treeNodeReducer<
   NodesDef extends Record<
@@ -161,16 +173,21 @@ export function treeNodeReducer<
     TreeNode<NodesDef, keyof NodesDef, any, any, any>
   >,
   N extends keyof NodesDef
->(state: NodesDef[N], action: TreeNodeAction): NodesDef[N] {
+>(state: NodesDef[N], action: TreeNodeAction<NodesDef, N>): NodesDef[N] {
   if (!(action && action.__typename)) return state;
-  let updatedState = state;
+  let updatedData = state.data;
+  let updatedChildren = state.children;
   if (action.__typename === 'ChangeElementChange') {
-    updatedState = Object.assign({}, updatedState, action.changes);
+    updatedData = Object.assign({}, state.data, action.changes);
+  } else {
+    updatedChildren = nodeChildrenReducer(state.children, action);
   }
-  updatedState = nodeChildrenReducer(
-    updatedState,
-    action as LinkFieldAction<any, any>
-  );
-
-  return updatedState;
+  if (updatedChildren !== state.children || updatedData !== state.data) {
+    return {
+      ...state,
+      children: updatedChildren,
+      data: updatedData
+    };
+  }
+  return state;
 }

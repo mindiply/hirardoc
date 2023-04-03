@@ -70,7 +70,13 @@ export function visitDocument<
   }
 }
 
-function breadthFirstNodes<NodesDef, U extends keyof NodesDef>(
+function breadthFirstNodes<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  U extends keyof NodesDef
+>(
   doc: NormalizedDocument<NodesDef, U>,
   nodeType: U,
   nodeId: Id,
@@ -91,9 +97,8 @@ function breadthFirstNodes<NodesDef, U extends keyof NodesDef>(
   const nodeSchema = doc.schema.nodeTypes[nodeType];
   for (const linkField in nodeSchema.children) {
     const linkFieldProps = nodeSchema.children[linkField];
-    const nodeLink = element[linkField as keyof typeof element] as NodeLink<
-      keyof NodesDef
-    >;
+    const nodeLink =
+      element.children[linkField as keyof typeof element.children];
     if (linkFieldProps === LinkType.set) {
       if (!(nodeLink && nodeLink instanceof Map)) {
         throw new TypeError('Expected a link set');
@@ -135,7 +140,13 @@ function breadthFirstNodes<NodesDef, U extends keyof NodesDef>(
   return nodeList;
 }
 
-function depthFirstNodes<NodesDef, R extends keyof NodesDef>(
+function depthFirstNodes<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef
+>(
   doc: NormalizedDocument<NodesDef, R>,
   nodeType: keyof NodesDef,
   nodeId: Id,
@@ -156,9 +167,8 @@ function depthFirstNodes<NodesDef, R extends keyof NodesDef>(
   const nodeSchema = doc.schema.nodeTypes[nodeType];
   for (const linkField in nodeSchema.children) {
     const linkFieldProps = nodeSchema.children[linkField];
-    const nodeLink = element[linkField as keyof typeof element] as NodeLink<
-      keyof NodesDef
-    >;
+    const nodeLink =
+      element.children[linkField as keyof typeof element.children];
     if (linkFieldProps === LinkType.set) {
       if (!(nodeLink && nodeLink instanceof Map)) {
         throw new TypeError('Expected a link set');

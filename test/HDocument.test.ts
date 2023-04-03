@@ -1,23 +1,17 @@
 import {
   creationDate,
-  emptyNodeInfo,
   emptyTestDocument,
-  INode,
-  IRootNode,
   ITestDocElementsMap,
-  removeParents, testDocSchema
-} from "./testTypes";
+  removeParents,
+  testDocSchema
+} from './testTypes';
 import {
   createNormalizedDocument,
   denormalizeDocument,
-  hasMappedElement,
   HDocCommandType,
-  ChangeElement,
-  DeleteElement,
   InsertElement,
-  MoveElement,
-  mappedElement,
-  // mutableDocument
+  mutableDocument,
+  NodeDataOfTreeNode
 } from '../src';
 
 describe('Empty doc and nodes', () => {
@@ -31,25 +25,73 @@ describe('Empty doc and nodes', () => {
   test('Should be able to create empty root elements', () => {
     expect(emptyDoc.emptyNode('Root')).toMatchObject({
       __typename: 'Root',
-      name: '',
-      children: []
+      data: {name: ''},
+      children: {
+        children: []
+      }
     });
   });
 
   test('Should be able to create empty node elements', () => {
     expect(emptyDoc.emptyNode('Node')).toMatchObject({
       __typename: 'Node',
-      text: '',
-      isChecked: false,
-      membersIds: [],
-      children: []
+      data: {
+        text: '',
+        isChecked: false,
+        membersIds: []
+      },
+      children: {
+        children: []
+      }
     });
   });
 });
 
-
 //
-// describe('Test the basic operations', () => {
+describe('Test the basic operations', () => {
+  test('Add one node', () => {
+    const emptyDoc = emptyTestDocument();
+    const expectedRootNode = {
+      __typename: 'Root',
+      _id: 1,
+      data: {createdAt: creationDate, name: 'root'},
+      children: [
+        {
+          __typename: 'Node',
+          _id: 'Node1',
+          children: [],
+          data: {isChecked: false, text: 'firstNode', membersIds: []}
+        }
+      ]
+    };
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'children', index: 0},
+      parent: [],
+      element: {
+        __typename: 'Node',
+        _id: 'Node1',
+        isChecked: false,
+        text: 'firstNode',
+        membersIds: []
+      }
+    };
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement(addNodeCmd);
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+    const replayMutableDoc = mutableDocument(emptyDoc);
+    replayMutableDoc.applyChanges(mutableDoc.changes);
+    expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+  });
+});
 //   test('The empty document', () => {
 //     const emptyDoc = emptyTestDocument();
 //     const expectedNodeTree: IRootNode = {

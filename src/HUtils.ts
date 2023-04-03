@@ -21,7 +21,9 @@ export function extractElementId<T>(elementId: ElementId<T>): ElementId<T> {
   };
 }
 
-export function isElementId(obj: any): obj is ElementId<any> {
+export function isElementId<TypeName = any>(
+  obj: any
+): obj is ElementId<TypeName> {
   return (
     typeof obj === 'object' &&
     isId(obj._id) &&
@@ -125,12 +127,15 @@ export function isArrayPathElement(obj: any): obj is ArrayPathElement<any> {
   );
 }
 
-export function isSetPathElement(obj: any): obj is SetPathElement<any> {
-  return (
+export function isSetPathElement(obj: any): obj is SetPathElement<any, any> {
+  return Boolean(
     obj &&
-    typeof obj === 'object' &&
-    typeof obj.field === 'string' &&
-    typeof obj.nodeStrId === 'string'
+      typeof obj === 'object' &&
+      typeof obj.field === 'string' &&
+      obj.nodeType &&
+      typeof obj.nodeType === 'string' &&
+      obj.nodeId &&
+      isId(obj.nodeId)
   );
 }
 

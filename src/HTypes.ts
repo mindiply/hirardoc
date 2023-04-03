@@ -34,10 +34,26 @@ export interface ParentToChildLinkField<ParentType, ParentField>
   index?: number;
 }
 
-export type TreeNode<
+export interface TreeNode<
   NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>,
   NodeType extends keyof NodesDef,
-  NodeData extends Record<any, any>,
+  NodeData,
+  ChildrenFields extends Record<any, NodeLink<keyof NodesDef>>,
+  LinksFields extends Record<any, NodeLink<keyof NodesDef>>
+> extends ElementId<NodeType> {
+  data: NodeData;
+  children: ChildrenFields;
+  links?: LinksFields;
+  parent: null | ParentToChildLinkField<
+    keyof NodesDef,
+    keyof NodeChildrenOfTreeNode<NodesDef, keyof NodesDef>
+  >;
+}
+
+export type CompactTreeNode<
+  NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>,
+  NodeType extends keyof NodesDef,
+  NodeData,
   ChildrenFields extends Record<any, NodeLink<keyof NodesDef>>,
   LinksFields extends Record<any, NodeLink<keyof NodesDef>>
 > = ElementId<NodeType> &
@@ -238,20 +254,28 @@ export enum HDocCommandType {
   MOVE_ELEMENT = 'MoveElementChange'
 }
 
+export type NewNodeInfo<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  ChildTypename extends keyof NodesDef
+> = {__typename: ChildTypename; _id?: Id} & Partial<
+  NodeDataOfTreeNode<NodesDef, ChildTypename>
+>;
+
 export interface InsertElement<
   NodesDef extends Record<
     keyof NodesDef,
     TreeNode<NodesDef, keyof NodesDef, any, any, any>
   >,
-  ChildTypename extends keyof NodesDef = keyof NodesDef,
-  ParentTypename extends keyof NodesDef = keyof NodesDef
+  ChildTypename extends keyof NodesDef,
+  ParentTypename extends keyof NodesDef
 > {
   __typename: HDocCommandType.INSERT_ELEMENT;
   parent: Path<NodesDef> | ElementId<ParentTypename>;
   position: PathElement<NodesDef, ParentTypename>;
-  element: {__typeName: ChildTypename; _id?: Id} & Partial<
-    NodeDataOfTreeNode<NodesDef, ChildTypename>
-  >;
+  element: NewNodeInfo<NodesDef, ChildTypename>;
 }
 
 export interface ChangeElement<

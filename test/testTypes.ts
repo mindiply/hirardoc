@@ -56,10 +56,10 @@ export interface ITestDocElementsMap {
 
 export type TestNormalizeDocument = NormalizedDocument<
   ITestDocElementsMap,
-  keyof ITestDocElementsMap
+  'Root'
 >;
 
-export const testDocSchema: DocumentSchema<ITestDocElementsMap> = {
+export const testDocSchema: DocumentSchema<ITestDocElementsMap, 'Root'> = {
   documentType: 'TestDocSchema',
   rootType: 'Root',
   nodeTypes: {
@@ -91,7 +91,12 @@ export const testDocSchema: DocumentSchema<ITestDocElementsMap> = {
 
 export const creationDate = new Date();
 export const emptyTestDocument = (): TestNormalizeDocument =>
-  createNormalizedDocument(testDocSchema);
+  createNormalizedDocument(testDocSchema, {
+    __typename: 'Root',
+    createdAt: creationDate,
+    _id: 1,
+    name: 'root'
+  });
 
 function removeNodeParent(node: INodeNode) {
   // @ts-expect-error

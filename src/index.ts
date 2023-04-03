@@ -10,10 +10,17 @@ export {
   // addElementToArrayReducer,
   // removeElementFromArrayReducer
 } from './HDocument';
+export {
+  docReducer,
+  addElementToArrayReducer,
+  removeElementFromArrayReducer,
+  idAndTypeOfChange,
+  mutableDocument
+} from './HMutableDocument';
 // export {diff, diffInfoOf, diffElementInfo, diffArray} from './HDiff';
-// export {visitDocument} from './HVisit';
+export {visitDocument} from './HVisit';
 // export {threeWayMerge, mergeElementInfo, threeWayMergeArray} from './HMerge3';
-export {denormalizeDocument} from './HDenormalize';
+export {compactTreeNode, denormalizeDocument} from './HDenormalize';
 // export {LazyMutableMap} from './LazyMap';
 export {
   mappedElement,

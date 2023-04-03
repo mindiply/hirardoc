@@ -5,12 +5,14 @@ import {
   ElementId,
   Id,
   LinkType,
+  NewNodeInfo,
   NodeChildrenOfTreeNode,
   NodeDataOfTreeNode,
   NodeLink,
   NodeLinksOfTreeNode,
   NormalizedDocument,
   Path,
+  PathElement,
   SetPathElement,
   TreeNode
 } from './HTypes';
@@ -22,7 +24,6 @@ import {
   isElementId,
   isSetPathElement
 } from './HUtils';
-import {pick} from 'lodash';
 
 /**
  * Creates an empty copy version of the normalized document
@@ -101,6 +102,48 @@ export function idAndTypeForPath<
   return {__typename: node.__typename, _id: node._id};
 }
 
+export function fieldAndIndexOfPosition<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  ParentType extends keyof NodesDef = keyof NodesDef
+>(
+  doc: NormalizedDocument<NodesDef>,
+  parentPath: Path<NodesDef> | ElementId<ParentType>,
+  positionInParent: PathElement<NodesDef, ParentType>
+): {
+  parentNode: NodesDef[ParentType];
+  field: keyof NodeChildrenOfTreeNode<NodesDef, ParentType>;
+  index: number;
+} {
+  const parentElId = isElementId<ParentType>(parentPath)
+    ? parentPath
+    : (doc.idAndTypeForPath(parentPath) as ElementId<ParentType>);
+  const parentNode = doc.getNode(parentElId);
+  if (!parentNode) {
+    throw new ReferenceError('Parent node not found');
+  }
+  let parentFieldName: AllChildrenFields<NodesDef[ParentType]>;
+  let indexInParent = -1;
+  if (isSetPathElement(positionInParent)) {
+    parentFieldName = (positionInParent as SetPathElement<NodesDef, ParentType>)
+      .field;
+  } else if (isArrayPathElement(positionInParent)) {
+    parentFieldName = positionInParent.field;
+    indexInParent = positionInParent.index;
+  } else {
+    parentFieldName = positionInParent as AllChildrenFields<
+      NodesDef[ParentType]
+    >;
+  }
+  return {
+    parentNode,
+    field: parentFieldName,
+    index: indexInParent
+  };
+}
+
 export function nodeInfo<
   NodesDef extends Record<
     keyof NodesDef,
@@ -116,17 +159,10 @@ export function nodeInfo<
   if (!node) {
     throw new ReferenceError('Node not found');
   }
-  return pick(
-    node,
-    Object.keys(
-      doc.schema.nodeTypes[
-        (nodeOrNodeId as ElementId<NodeType>).__typename
-      ].data()
-    )
-  ) as NodeDataOfTreeNode<NodesDef, NodeType>;
+  return node.data;
 }
 
-class NormalizeDocumentImpl<
+export class NormalizedDocumentImpl<
   NodesDef extends Record<
     keyof NodesDef,
     TreeNode<NodesDef, keyof NodesDef, any, any, any>
@@ -140,12 +176,23 @@ class NormalizeDocumentImpl<
   public rootId: ElementId<R>;
 
   constructor(
-    schemaOrTree: DocumentSchema<NodesDef, R> | NormalizedDocument<NodesDef, R>
+    schema: DocumentSchema<NodesDef, R>,
+    rootData?: Omit<NewNodeInfo<NodesDef, R>, '__typename'>
+  );
+  constructor(existingDoc: NormalizedDocument<NodesDef, R>);
+  constructor(
+    schemaOrTree: DocumentSchema<NodesDef, R> | NormalizedDocument<NodesDef, R>,
+    rootData = {} as Omit<NewNodeInfo<NodesDef, R>, '__typename'>
   ) {
     if (isDocumentSchema<NodesDef, R>(schemaOrTree)) {
       this.schema = schemaOrTree;
       this.nodes = new Map();
       const root = this.emptyNode(schemaOrTree.rootType);
+      const {_id, ...otherRootData} = rootData;
+      Object.assign(root.data, otherRootData);
+      if (_id) {
+        root._id = _id;
+      }
       this.rootId = root as unknown as ElementId<R>;
       this.nodes.set(iidToStr(this.rootId), root);
     } else {
@@ -205,12 +252,14 @@ class NormalizeDocumentImpl<
     const newNode = {
       _id: generateNewId(),
       __typename: nodeType,
-      ...(emptyChildren as NodeChildrenOfTreeNode<NodesDef, NodeType>),
-      ...nodeTypeDef.data(),
-      ...(emptyLinks as NodeLinksOfTreeNode<NodesDef, NodeType>),
+      children: emptyChildren as NodeChildrenOfTreeNode<NodesDef, NodeType>,
+      data: nodeTypeDef.data() as NodeDataOfTreeNode<NodesDef, NodeType>,
       parent: null
-    };
-    return newNode as NodesDef[NodeType];
+    } as unknown as NodesDef[NodeType];
+    if (nodeTypeDef.links && Object.keys(emptyLinks).length > 0) {
+      newNode.links = emptyLinks;
+    }
+    return newNode;
   }
 
   public getNode<Type extends keyof NodesDef>(
@@ -243,8 +292,31 @@ export function createNormalizedDocument<
     TreeNode<NodesDef, keyof NodesDef, any, any, any>
   >,
   R extends keyof NodesDef = keyof NodesDef
->(schema: DocumentSchema<NodesDef, R>): NormalizedDocument<NodesDef, R> {
-  return new NormalizeDocumentImpl(schema);
+>(
+  schema: DocumentSchema<NodesDef, R>,
+  rootData?: NewNodeInfo<NodesDef, R>
+): NormalizedDocument<NodesDef, R>;
+export function createNormalizedDocument<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef = keyof NodesDef
+>(
+  existingDoc: NormalizedDocument<NodesDef, R>
+): NormalizedDocument<NodesDef, R>;
+export function createNormalizedDocument<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef = keyof NodesDef
+>(
+  schemaOrDoc: DocumentSchema<NodesDef, R> | NormalizedDocument<NodesDef, R>,
+  rootData: Partial<NodeDataOfTreeNode<NodesDef, R>> = {}
+): NormalizedDocument<NodesDef, R> {
+  // @ts-expect-error not working well with overload
+  return new NormalizedDocumentImpl(schemaOrDoc, rootData);
 }
 
 /**
@@ -261,7 +333,7 @@ export function createNormalizedDocument<
 export function cloneNormalizedDocument<
   NorDoc extends NormalizedDocument<any, any>
 >(doc: NorDoc): NorDoc {
-  return new NormalizeDocumentImpl(doc) as unknown as NorDoc;
+  return new NormalizedDocumentImpl(doc) as unknown as NorDoc;
 }
 
 /**
