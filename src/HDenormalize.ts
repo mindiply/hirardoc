@@ -1,34 +1,33 @@
 import {
   DocumentVisitTraversal,
   Id,
-  INormalizedDocument,
-  INormalizedMutableMapsDocument,
-  IParentedId,
-  IParentedNode
+  NormalizedDocument,
+  IParentedNode,
+  TreeNode,
+  LinkType,
+  NodeLink
 } from './HTypes';
 import {visitDocument} from './HVisit';
-import {mappedElement} from './HUtils';
+import {isElementId, mappedElement} from './HUtils';
 
 const elementUid = <U>(elementType: U, elementId: Id) =>
   `${elementType}:${elementId}`;
 
 export function denormalizeDocument<
-  MapsInterface,
-  U extends keyof MapsInterface
->(
-  doc:
-    | INormalizedDocument<MapsInterface, U>
-    | INormalizedMutableMapsDocument<MapsInterface, U>
-): IParentedNode<U> {
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef
+>(doc: NormalizedDocument<NodesDef, R>): IParentedNode<keyof NodesDef> {
   const nodes: Map<string, IParentedNode> = new Map();
   // I will need two visits. One to create all the nodes while setting the parents, and
   // a second one where we change the children.
   visitDocument(doc, (normalizedDoc, nodeType, nodeId) => {
-    const element = mappedElement(doc.maps, nodeType, nodeId) as IParentedId;
-    const parentUid =
-      element.parentType && element.parentId
-        ? elementUid(element.parentType, element.parentId)
-        : null;
+    const element = mappedElement(doc, nodeType, nodeId);
+    const parentUid = element.parent
+      ? elementUid(element.parent.__typename, element.parent._id)
+      : null;
     const parent = parentUid ? nodes.get(parentUid) || null : null;
     const denormalizedNode: IParentedNode = {...element, parent};
     nodes.set(elementUid(nodeType, nodeId), denormalizedNode);
@@ -36,28 +35,49 @@ export function denormalizeDocument<
   visitDocument(
     doc,
     (normDoc, nodeType, nodeId) => {
-      const element = mappedElement(doc.maps, nodeType, nodeId) as IParentedId;
+      const element = mappedElement(doc, nodeType, nodeId);
       const uid = elementUid(nodeType, nodeId);
       const denormalizedNode = nodes.get(uid)!;
-      const typeLinks = doc.schema.types[nodeType];
-      for (const fieldName in typeLinks) {
-        if (fieldName === 'parentId') {
-          continue;
-        }
-        const linkProps = typeLinks[fieldName];
-        if (Array.isArray(linkProps)) {
-          const linkedIds = (element as any)[fieldName] as Id[];
-          if (!Array.isArray(linkedIds)) {
-            (denormalizedNode as any)[fieldName] = [];
-          } else {
-            (denormalizedNode as any)[fieldName] = linkedIds
+      const nodeDef = doc.schema.nodeTypes[nodeType];
+      for (const fieldName in nodeDef.children) {
+        const linkProps = nodeDef.children[fieldName];
+        const elementLink = element[fieldName] as NodeLink<keyof NodesDef>;
+        if (linkProps === LinkType.single) {
+          if (elementLink === null) {
+            denormalizedNode[fieldName as keyof typeof denormalizedNode] = null;
+            continue;
+          }
+          if (!isElementId(elementLink)) {
+            throw new TypeError('Expected ElementId');
+          }
+          denormalizedNode[fieldName as keyof typeof denormalizedNode] =
+            nodes.get(elementUid(elementLink.__typename, elementLink._id)) ||
+            null;
+        } else if (linkProps === LinkType.array) {
+          if (!Array.isArray(elementLink)) {
+            throw new TypeError('Expected array of ids');
+          }
+          denormalizedNode[fieldName as keyof typeof denormalizedNode] =
+            elementLink
               .map(childId =>
-                nodes.get(elementUid(linkProps[0].__schemaType, childId))
+                nodes.get(elementUid(childId.__typename, childId._id))
               )
               .filter(childNode => childNode !== undefined);
+        } else if (linkProps === LinkType.set) {
+          if (!(elementLink && elementLink instanceof Map)) {
+            throw new TypeError('Expected a links set');
           }
+          const nodesSet = new Map<string, IParentedNode<keyof NodesDef>>();
+          for (const [idStr, elId] of elementLink.entries()) {
+            nodesSet.set(
+              idStr,
+              nodes.get(elementUid(elId.__typename, elId._id))!
+            );
+          }
+          denormalizedNode[fieldName as keyof typeof denormalizedNode] =
+            nodesSet;
         } else {
-          (denormalizedNode as any)[fieldName] = null;
+          throw new TypeError('Unknown link type');
         }
       }
     },
@@ -66,5 +86,5 @@ export function denormalizeDocument<
       traversal: DocumentVisitTraversal.DEPTH_FIRST
     }
   );
-  return nodes.get(elementUid(doc.rootType, doc.rootId))!;
+  return nodes.get(elementUid(doc.rootId.__typename, doc.rootId._id))!;
 }

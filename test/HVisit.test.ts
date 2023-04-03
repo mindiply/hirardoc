@@ -4,7 +4,7 @@ import {
   testDocSchema,
   TestNormalizeDocument
 } from './testTypes';
-import {DocumentVisitTraversal, IVisitor, visitDocument} from '../src';
+import {DocumentVisitTraversal, NodeVisitor, visitDocument} from '../src';
 
 const testDoc: TestNormalizeDocument = {
   schema: testDocSchema,
@@ -66,7 +66,7 @@ const testDoc: TestNormalizeDocument = {
   rootId: 'root_1'
 };
 
-const testVisit: IVisitor<
+const testVisit: NodeVisitor<
   ITestDocElementsMap,
   keyof ITestDocElementsMap,
   {count: number; nodeIds: string[]}

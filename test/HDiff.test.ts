@@ -4,10 +4,10 @@ import {
   diff,
   HDocCommandType,
   HDocOperation,
-  IChangeElement,
-  IDeleteElement,
-  IInsertElement,
-  IMoveElement,
+  ChangeElement,
+  DeleteElement,
+  InsertElement,
+  MoveElement,
   mutableDocument
 } from '../src';
 import {emptyTestDocument, INode, ITestDocElementsMap} from './testTypes';
@@ -22,7 +22,7 @@ describe('Diff between versions of the same tree', () => {
 
   test('Diff single insertion command', () => {
     const a = emptyTestDocument();
-    const addNodeCmd: IInsertElement<
+    const addNodeCmd: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -69,7 +69,7 @@ describe('Diff between versions of the same tree', () => {
 
   test('Diff single insertion command after another insertion', () => {
     let a = emptyTestDocument();
-    const addNodeCmd: IInsertElement<
+    const addNodeCmd: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -90,7 +90,7 @@ describe('Diff between versions of the same tree', () => {
     mutableDoc.insertElement(addNodeCmd);
     a = mutableDoc.updatedDocument();
     mutableDoc = mutableDocument(a);
-    const addNodeCmd2: IInsertElement<
+    const addNodeCmd2: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -137,7 +137,7 @@ describe('Diff between versions of the same tree', () => {
   test('Move of child between parent and inserted parent', () => {
     let a = emptyTestDocument();
     let mutableDoc = mutableDocument(a);
-    const addNodeCmd: IInsertElement<
+    const addNodeCmd: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -154,7 +154,7 @@ describe('Diff between versions of the same tree', () => {
         membersIds: []
       }
     };
-    const addNodeCmd2: IInsertElement<
+    const addNodeCmd2: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -177,7 +177,7 @@ describe('Diff between versions of the same tree', () => {
     a = mutableDoc.updatedDocument();
     mutableDoc = mutableDocument(a);
 
-    const addNodeCmd3: IInsertElement<
+    const addNodeCmd3: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -196,7 +196,7 @@ describe('Diff between versions of the same tree', () => {
     };
     mutableDoc.insertElement(addNodeCmd3);
 
-    const moveElementCmd: IMoveElement<
+    const moveElementCmd: MoveElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -258,7 +258,7 @@ describe('Diff between versions of the same tree', () => {
 
   test('Change of parent and deletion of a child node', () => {
     let a = emptyTestDocument();
-    const addNodeCmd: IInsertElement<
+    const addNodeCmd: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -277,7 +277,7 @@ describe('Diff between versions of the same tree', () => {
     };
     let mutableDoc = mutableDocument(a);
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: IInsertElement<
+    const addNodeCmd2: InsertElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode
@@ -297,12 +297,12 @@ describe('Diff between versions of the same tree', () => {
     mutableDoc.insertElement(addNodeCmd2);
     a = mutableDoc.updatedDocument();
     mutableDoc = mutableDocument(a);
-    const deleteElementCmd: IDeleteElement<ITestDocElementsMap> = {
+    const deleteElementCmd: DeleteElement<ITestDocElementsMap> = {
       __typename: HDocCommandType.DELETE_ELEMENT,
       element: ['children', 0, 'children', 0]
     };
     mutableDoc.deleteElement(deleteElementCmd);
-    const changeElementCmd: IChangeElement<
+    const changeElementCmd: ChangeElement<
       ITestDocElementsMap,
       keyof ITestDocElementsMap,
       INode

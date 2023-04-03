@@ -1,23 +1,27 @@
 import {v1 as uuid} from 'uuid';
 import {
-  EntitiesMaps,
   Id,
-  IElementId,
-  IFieldEntityReference,
-  ILazyMutableMap,
-  IMutableDocument,
-  INormalizedDocument,
-  IParentedId,
-  MutableEntitiesMaps,
-  SubEntityPathElement
+  ElementId,
+  NormalizedDocument,
+  NodesDefOfDoc,
+  ArrayPathElement,
+  SetPathElement,
+  DocumentSchema,
+  TreeNode
 } from './HTypes';
-import {LazyMutableMap} from './LazyMap';
 
 export function isId(obj: any): obj is Id {
   return typeof obj === 'number' || (obj !== '' && typeof obj === 'string');
 }
 
-export function isElementId(obj: any): obj is IElementId<any> {
+export function extractElementId<T>(elementId: ElementId<T>): ElementId<T> {
+  return {
+    __typename: elementId.__typename,
+    _id: elementId._id
+  };
+}
+
+export function isElementId(obj: any): obj is ElementId<any> {
   return (
     typeof obj === 'object' &&
     isId(obj._id) &&
@@ -25,107 +29,15 @@ export function isElementId(obj: any): obj is IElementId<any> {
   );
 }
 
+export function elementIdsEquals(
+  el1: ElementId<any>,
+  el2: ElementId<any>
+): boolean {
+  return el1.__typename === el2.__typename && el1._id === el2._id;
+}
+
 export function isNullableId(obj: any): obj is Id | null {
   return obj === null || isId(obj);
-}
-
-export function isParentedId(obj: any): obj is IParentedId {
-  return (
-    typeof obj === 'object' &&
-    isId(obj._id) &&
-    typeof obj.__typename === 'string' &&
-    (obj.parentType === null || typeof obj.parentType === 'string') &&
-    (obj.parentId === null || isId(obj.parentId))
-  );
-}
-
-/**
- * Check if a map contains parented id elements. For performance reasons
- * we only check the object is a map.
- * @param obj
- * @returns {obj is Map<Id, IParentedId>}
- */
-export function isParentedMap(obj: any): obj is Map<Id, IParentedId> {
-  return Boolean(obj && obj instanceof Map);
-}
-
-export function isEntitiesMap(obj: any): obj is EntitiesMaps<any, any> {
-  if (typeof obj !== 'object') return false;
-  let i = 0;
-  for (const entityType of Object.keys(obj)) {
-    if (!isParentedMap(obj[entityType])) {
-      return false;
-    }
-    i++;
-  }
-  return i > 0;
-}
-
-export function isSubEntityPathElement(
-  obj: any
-): obj is SubEntityPathElement<any> {
-  if (typeof obj === 'string') {
-    return true;
-  }
-  if (
-    Array.isArray(obj) &&
-    obj.length === 2 &&
-    typeof obj[0] === 'string' &&
-    typeof obj[1] === 'number'
-  ) {
-    return true;
-  }
-  return false;
-}
-
-export function isSchemaReference(obj: any): obj is IFieldEntityReference<any> {
-  return Boolean(
-    obj &&
-      typeof obj === 'object' &&
-      '__schemaType' in obj &&
-      obj.__schemaType &&
-      typeof obj.__schemaType === 'string'
-  );
-}
-
-export function isIParentedId<U>(obj: any): obj is IParentedId<U> {
-  return (
-    obj &&
-    typeof obj === 'object' &&
-    obj._id !== undefined &&
-    isId(obj._id) &&
-    (typeof obj.parentId === 'undefined' ||
-      isId(obj.parentId) ||
-      obj.parentId === null)
-  );
-}
-
-/**
- * Checks if the object passed as parameter is a mutable
- * lazy map with Ids as keys and IParentedId subtypes as
- * values.
- *
- * @param obj
- * @returns {obj is ILazyMutableMap<Id, IParentedId>}
- */
-export function isParentedMutableMap(
-  obj: any
-): obj is ILazyMutableMap<Id, IParentedId> {
-  return Boolean(obj && obj instanceof LazyMutableMap);
-}
-
-export function isMutableEntitiesMap(
-  obj: any
-): obj is MutableEntitiesMaps<any, any> {
-  if (typeof obj !== 'object') return false;
-  const fieldNames = Object.keys(obj);
-  if (fieldNames.length < 1) return false;
-  for (const fieldName of fieldNames) {
-    if (!isParentedMutableMap(obj[fieldName])) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /**
@@ -137,36 +49,12 @@ export function isMutableEntitiesMap(
  * @param {Id} elementId
  * @returns {boolean}
  */
-export function hasMappedElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
->(
-  docOrMaps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>
-    | INormalizedDocument<MapsInterface, U>
-    | IMutableDocument<MapsInterface, U>,
-  elementType: U,
+export function hasMappedElement<NorDoc extends NormalizedDocument<any, any>>(
+  docOrMaps: NorDoc,
+  elementType: keyof NodesDefOfDoc<NorDoc>,
   elementId: Id
 ): boolean {
-  let maps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>;
-  if (isEntitiesMap(docOrMaps) || isMutableEntitiesMap(docOrMaps)) {
-    maps = docOrMaps;
-  } else if (
-    isEntitiesMap((docOrMaps as any).maps) ||
-    isMutableEntitiesMap((docOrMaps as any).maps)
-  ) {
-    maps = (docOrMaps as any).maps;
-  } else {
-    return false;
-  }
-  if (!(elementType in maps)) {
-    return false;
-  }
-  const typeMap: ILazyMutableMap<Id, any> | Map<Id, any> = maps[elementType];
-  return typeMap.has(elementId);
+  return docOrMaps.getNode({_id: elementId, __typename: elementType}) !== null;
 }
 
 /**
@@ -182,44 +70,18 @@ export function hasMappedElement<
  * @returns {EntitiesMaps<MapsInterface>[U] extends Map<Id, infer T> ? T : never}
  */
 export function mappedElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
->(
-  docOrMaps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>
-    | INormalizedDocument<MapsInterface, U>
-    | IMutableDocument<MapsInterface, U>,
-  elementType: U,
-  elementId: Id
-): EntitiesMaps<MapsInterface>[U] extends Map<Id, infer T> ? T : never {
-  let maps:
-    | EntitiesMaps<MapsInterface, U>
-    | MutableEntitiesMaps<MapsInterface, U>;
-  if (isEntitiesMap(docOrMaps) || isMutableEntitiesMap(docOrMaps)) {
-    maps = docOrMaps;
-  } else if (
-    isEntitiesMap((docOrMaps as any).maps) ||
-    isMutableEntitiesMap((docOrMaps as any).maps)
-  ) {
-    maps = (docOrMaps as any).maps;
-  } else {
-    maps = {} as
-      | EntitiesMaps<MapsInterface, U>
-      | MutableEntitiesMaps<MapsInterface, U>;
-  }
-  if (!(elementType in maps)) {
-    throw new TypeError(`Element type ${String(elementType)} not found`);
-  }
-  const typeMap: ILazyMutableMap<Id, any> | Map<Id, any> = maps[elementType];
-  if (!typeMap.has(elementId)) {
+  NorDoc extends NormalizedDocument<any, any>,
+  N extends keyof NodesDefOfDoc<NorDoc>
+>(docOrMaps: NorDoc, elementType: N, elementId: Id): NodesDefOfDoc<NorDoc>[N] {
+  const element = docOrMaps.getNode({__typename: elementType, _id: elementId});
+  if (!element) {
     throw new ReferenceError(
       `Referential integrity: element ${String(
         elementType
       )}.${elementId} not found`
     );
   }
-  return typeMap.get(elementId)!;
+  return element;
 }
 
 /**
@@ -250,6 +112,77 @@ export function assert(predicate: boolean, errorMsg: string) {
     }
     if (assertConf.throwOnViolation) {
       throw new Error(errorMsg);
+    }
+  }
+}
+
+export function isArrayPathElement(obj: any): obj is ArrayPathElement<any> {
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    typeof obj.field === 'string' &&
+    typeof obj.index === 'number'
+  );
+}
+
+export function isSetPathElement(obj: any): obj is SetPathElement<any> {
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    typeof obj.field === 'string' &&
+    typeof obj.nodeStrId === 'string'
+  );
+}
+
+export function isDocumentSchema<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  RootType extends keyof NodesDef
+>(obj: any): obj is DocumentSchema<NodesDef, RootType> {
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    typeof obj.documentType === 'string' &&
+    obj.nodeTypes &&
+    typeof obj.nodeTypes === 'object' &&
+    typeof obj.rootType === 'string'
+  );
+}
+
+export function iidToStr(elementId: ElementId<any>): string {
+  return `${elementId.__typename}.${elementId._id}`;
+}
+
+export class NodeWithIdIterator<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >
+> implements IterableIterator<[string, NodesDef[keyof NodesDef]]>
+{
+  private originalTreeIterator: IterableIterator<NodesDef[keyof NodesDef]>;
+  constructor(hTree: NormalizedDocument<NodesDef>) {
+    this.originalTreeIterator = hTree[Symbol.iterator]();
+  }
+
+  public [Symbol.iterator]() {
+    return this;
+  }
+
+  public next(): IteratorResult<[string, NodesDef[keyof NodesDef]]> {
+    const nextVal = this.originalTreeIterator.next();
+    if (nextVal.done) {
+      return {
+        done: true,
+        value: undefined
+      };
+    } else {
+      return {
+        done: false,
+        value: [iidToStr(nextVal.value), nextVal.value]
+      };
     }
   }
 }

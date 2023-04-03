@@ -7,14 +7,14 @@ import {
   EqualFn,
   HDocCommandType,
   HDocOperation,
-  IChangeElement,
+  ChangeElement,
   Id,
-  IDeleteElement,
-  IDocumentSchema,
+  DeleteElement,
+  DocumentSchema,
   IFieldEntityReference,
-  IInsertElement,
-  IMoveElement,
-  INormalizedDocument,
+  InsertElement,
+  MoveElement,
+  NormalizedDocument,
   INormalizedMutableMapsDocument,
   IParentedId,
   MappedParentedTypesFields,
@@ -34,11 +34,11 @@ import {defaultWasTouchedFn} from './bufferDiff3';
  * is assumed to have the same root element and schema as
  * baseDoc
  *
- * @param {INormalizedDocument<MapsInterface, U>} baseDoc
- * @param {INormalizedDocument<MapsInterface, U>} laterDoc
+ * @param {NormalizedDocument<MapsInterface, U>} baseDoc
+ * @param {NormalizedDocument<MapsInterface, U>} laterDoc
  * @returns {HDocOperation<MapsInterface, any, U>[]}
  */
-export function diff<NorDoc extends INormalizedDocument<any, any>>(
+export function diff<NorDoc extends NormalizedDocument<any, any>>(
   baseDoc: NorDoc,
   laterDoc: NorDoc
 ): HDocOperation<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, any>[] {
@@ -84,7 +84,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
           MappedParentedTypesFields<MappedParentedTypesFields<NorDoc>>
         >(mutableDoc, laterDoc, nodeType, nodeId);
         if (Object.keys(infoChanges).length > 0) {
-          const changeElementCmd: IChangeElement<
+          const changeElementCmd: ChangeElement<
             MapsOfNormDoc<NorDoc>,
             UOfNormDoc<NorDoc>,
             IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
@@ -139,7 +139,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
                   childType,
                   destChildId
                 );
-                const moveChildCmd: IMoveElement<
+                const moveChildCmd: MoveElement<
                   MapsOfNormDoc<NorDoc>,
                   UOfNormDoc<NorDoc>,
                   IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
@@ -180,7 +180,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
                     ? []
                     : null;
                 }
-                const addChildCmd: IInsertElement<
+                const addChildCmd: InsertElement<
                   MapsOfNormDoc<NorDoc>,
                   UOfNormDoc<NorDoc>,
                   IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
@@ -204,7 +204,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
             (destElement as any)[linkFieldName] !==
             (mutableElement as any)[linkFieldName]
           ) {
-            const changeLinkFieldCmd: IChangeElement<
+            const changeLinkFieldCmd: ChangeElement<
               MapsOfNormDoc<NorDoc>,
               UOfNormDoc<NorDoc>,
               IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
@@ -231,7 +231,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
     mutableDoc,
     (doc, nodeType, nodeId) => {
       if (!hasMappedElement(laterDoc.maps, nodeType, nodeId)) {
-        const deleteElementCmd: IDeleteElement<
+        const deleteElementCmd: DeleteElement<
           MapsOfNormDoc<NorDoc>,
           UOfNormDoc<NorDoc>
         > = {
@@ -255,7 +255,7 @@ export function diff<NorDoc extends INormalizedDocument<any, any>>(
  * of the element containing the info fields that have changed between baseEl
  * and laterEl.
  *
- * @param {IDocumentSchema<MapsInterface, U>} schema
+ * @param {DocumentSchema<MapsInterface, U>} schema
  * @param {U} elementType
  * @param {T} baseEl
  * @param {T} laterEl
@@ -266,7 +266,7 @@ export function diffElementInfo<
   U extends keyof MapsInterface,
   T extends IParentedId<U, U>
 >(
-  schema: IDocumentSchema<MapsInterface, U>,
+  schema: DocumentSchema<MapsInterface, U>,
   elementType: U,
   baseEl: T,
   laterEl: T
@@ -306,10 +306,10 @@ export function diffInfoOf<
   T extends MappedParentedTypesFields<MapsInterface>
 >(
   baseDoc:
-    | INormalizedDocument<MapsInterface, U>
+    | NormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   laterDoc:
-    | INormalizedDocument<MapsInterface, U>
+    | NormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   elementType: U,
   elementId: Id

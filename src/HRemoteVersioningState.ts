@@ -3,7 +3,7 @@
  * for a specific Timeline board.
  */
 
-import {Id, INormalizedDocument} from './HTypes';
+import {Id, NormalizedDocument} from './HTypes';
 import type {HDocHistory, HistoryDelta, HistoryRecord} from './HVersioning';
 
 export enum TimelineHistoryProviderActionType {
@@ -125,7 +125,7 @@ interface BaseLocalBranchState<
   Checkpoint
 > {
   localHistory: HDocHistory<MapsInterface, U, Checkpoint>;
-  currentDocument: INormalizedDocument<MapsInterface, U>;
+  currentDocument: NormalizedDocument<MapsInterface, U>;
 }
 
 enum ApiRequestStatus {

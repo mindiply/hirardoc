@@ -16,23 +16,23 @@ import {
   ElementInfoConflicts,
   EqualFn,
   HDocCommandType,
-  IChangeElement,
+  ChangeElement,
   Id,
-  IDeleteElement,
-  IDocumentSchema,
+  DeleteElement,
+  DocumentSchema,
   IElementConflicts,
   IFieldEntityReference,
   IGetterSetter,
   II3MergeResult,
   II3WMergeContext,
-  IInsertElement,
+  InsertElement,
   IMergeElementOverrides,
   IMergeElementsState,
-  IMergeHooks,
+  MergeHooks,
   IMergeOptions,
-  IMoveElement,
-  IMutableDocument,
-  INormalizedDocument,
+  MoveElement,
+  MutableDocument,
+  NormalizedDocument,
   INormalizedMutableMapsDocument,
   IParentedId,
   IProcessingOrderElement,
@@ -175,9 +175,9 @@ interface IMergedElementInfoResult<
   conflicts?: ElementInfoConflicts<ElementType>;
 }
 
-type NDoc = INormalizedDocument<any, any>;
+type NDoc = NormalizedDocument<any, any>;
 
-const defaultHooks: IMergeHooks<NDoc> = {
+const defaultHooks: MergeHooks<NDoc> = {
   onIncompatibleElementVersions: (
     elementType,
     elementId,
@@ -216,7 +216,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
       // let's swallow the integrity exception
     }
     if (currentType !== elementType || currentId !== elementId) {
-      const moveElementCmd: IMoveElement<
+      const moveElementCmd: MoveElement<
         MapsOfNormDoc<NDoc>,
         UOfNormDoc<NDoc>,
         IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>
@@ -271,7 +271,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
     toPosition,
     mergeContext
   ) => {
-    const moveCmd: IMoveElement<
+    const moveCmd: MoveElement<
       MapsOfNormDoc<NDoc>,
       UOfNormDoc<NDoc>,
       IParentedId<UOfNormDoc<NDoc>, UOfNormDoc<NDoc>>
@@ -345,7 +345,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
       );
     }
     if (elementInfoDiff && Object.keys(elementInfoDiff).length > 0) {
-      const changeCmd: IChangeElement<
+      const changeCmd: ChangeElement<
         MapsOfNormDoc<NDoc>,
         UOfNormDoc<NDoc>,
         T
@@ -365,7 +365,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
     }
   },
   onDeleteElement: (elementType, elementId, mergeContext) => {
-    const deleteCmd: IDeleteElement<MapsOfNormDoc<NDoc>, UOfNormDoc<NDoc>> = {
+    const deleteCmd: DeleteElement<MapsOfNormDoc<NDoc>, UOfNormDoc<NDoc>> = {
       __typename: HDocCommandType.DELETE_ELEMENT,
       element: pathForElementWithId(
         mergeContext.mergedDoc,
@@ -436,7 +436,7 @@ const defaultHooks: IMergeHooks<NDoc> = {
     position: SubEntityPathElement<MapsOfNormDoc<NDoc>>,
     mergeContext: II3WMergeContext<NDoc>
   ): ElementType => {
-    const insertCmd: IInsertElement<
+    const insertCmd: InsertElement<
       MapsOfNormDoc<NDoc>,
       UOfNormDoc<NDoc>,
       ElementType
@@ -460,13 +460,13 @@ const defaultHooks: IMergeHooks<NDoc> = {
  * tree reporting back if there were conflicts and a diff
  * object to go from myDoc to theirDoc.
  *
- * @param {INormalizedDocument<MapsInterface, U>} baseDoc
- * @param {INormalizedDocument<MapsInterface, U>} myDoc
- * @param {INormalizedDocument<MapsInterface, U>} theirDoc
+ * @param {NormalizedDocument<MapsInterface, U>} baseDoc
+ * @param {NormalizedDocument<MapsInterface, U>} myDoc
+ * @param {NormalizedDocument<MapsInterface, U>} theirDoc
  * @param {MergeOverridesMap<MapsInterface, U, ElementType>} options
  * @returns {II3MergeResult<MapsInterface, U>}
  */
-export function threeWayMerge<NorDoc extends INormalizedDocument<any, any>>(
+export function threeWayMerge<NorDoc extends NormalizedDocument<any, any>>(
   baseDoc: NorDoc,
   myDoc: NorDoc,
   theirDoc: NorDoc,
@@ -487,7 +487,7 @@ export function threeWayMerge<NorDoc extends INormalizedDocument<any, any>>(
     conflicts: {} as ConflictsMap<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
     overrides:
       options && options.elementsOverrides ? options.elementsOverrides : {},
-    defaultHooks: defaultHooks as any as IMergeHooks<NorDoc>
+    defaultHooks: defaultHooks as any as MergeHooks<NorDoc>
   };
   for (const elementType in baseDoc.maps) {
     // ToDo resolve this type error
@@ -508,7 +508,7 @@ export function mergeElementInfo<
   ElementType extends IParentedId<U, U>,
   K extends keyof ElementType = keyof ElementType
 >(
-  schema: IDocumentSchema<MapsInterface, U>,
+  schema: DocumentSchema<MapsInterface, U>,
   elementType: U,
   baseElement: ElementType,
   leftElement: ElementType,
@@ -554,7 +554,7 @@ export function mergeElementInfo<
 
 const getElementTypeUid = <MapsInterface, U extends keyof MapsInterface>(
   doc:
-    | INormalizedDocument<MapsInterface, U>
+    | NormalizedDocument<MapsInterface, U>
     | INormalizedMutableMapsDocument<MapsInterface, U>,
   elementType: U
 ): string => `${doc.schema.documentType}.${String(elementType)}`;
@@ -582,12 +582,12 @@ function createGetterSetter<T>(value: T): IGetterSetter<T> {
  * the changes array, it is meant to be used only within the merging
  * functions
  *
- * @param {IMutableDocument<MapsInterface, U>} document
+ * @param {MutableDocument<MapsInterface, U>} document
  * @param {U} elementType
  * @param {Id} elementId
- * @returns {IMutableDocument<MapsInterface, U>}
+ * @returns {MutableDocument<MapsInterface, U>}
  */
-function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
+function reIdElementSubtree<NorDoc extends NormalizedDocument<any, any>>(
   context: II3WMergeContext<NorDoc>,
   treeToRebase: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
   elementType: UOfNormDoc<NorDoc>,
@@ -747,7 +747,7 @@ function reIdElementSubtree<NorDoc extends INormalizedDocument<any, any>>(
  * @returns {IMergeElementOverrides<MapsInterface, U, MapsInterface[typeof elementType]>}
  */
 function fnsForElementType<
-  NorDoc extends INormalizedDocument<any, any>,
+  NorDoc extends NormalizedDocument<any, any>,
   ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
 >(
   context: II3WMergeContext<NorDoc>,
@@ -857,11 +857,11 @@ function fnsForElementType<
  * merge of a NormalizedDocument.
  *
  * @param {II3WMergeContext<MapsInterface, U>} mergeCtx
- * @returns {IMutableDocument<MapsInterface, U>}
+ * @returns {MutableDocument<MapsInterface, U>}
  */
-function buildMergedTree<NorDoc extends INormalizedDocument<any, any>>(
+function buildMergedTree<NorDoc extends NormalizedDocument<any, any>>(
   mergeCtx: II3WMergeContext<NorDoc>
-): IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, NorDoc> {
+): MutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, NorDoc> {
   const {myDoc: left, theirDoc: right, mergedDoc, baseDoc} = mergeCtx;
   for (
     const nodeQueue: Array<[UOfNormDoc<NorDoc>, Id]> = [
@@ -990,7 +990,7 @@ function isConflictMergeZone(obj: any): obj is ConflictMergeRegion<any> {
  * needed during the merging and we want to ensure the new rebased
  * value is used straight away.
  */
-class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
+class NextSiblingToProcessIterator<NorDoc extends NormalizedDocument<any, any>>
   implements IterableIterator<IProcessingOrderElement>
 {
   private baseArray: Id[];
@@ -1265,7 +1265,7 @@ class NextSiblingToProcessIterator<NorDoc extends INormalizedDocument<any, any>>
  * @param {AllMappedTypesFields<MapsInterface>} linkedArrayField
  * @returns {Array<[U, Id]>}
  */
-function mergeLinkedArray<NorDoc extends INormalizedDocument<any, any>>(
+function mergeLinkedArray<NorDoc extends NormalizedDocument<any, any>>(
   mergeCtx: II3WMergeContext<NorDoc>,
   parentType: UOfNormDoc<NorDoc>,
   parentId: Id,
@@ -1481,13 +1481,13 @@ function getElementUid<U>(elementType: U, elemendId: Id): string {
  * Creates a map of IMergeElementsState records for each element in the
  * document, in preparation for a merge.
  *
- * @param {INormalizedDocument<MapsInterface, U>} baseDoc
- * @param {INormalizedDocument<MapsInterface, U>} laterDoc
+ * @param {NormalizedDocument<MapsInterface, U>} baseDoc
+ * @param {NormalizedDocument<MapsInterface, U>} laterDoc
  * @returns {Map<string, IMergeElementsState>}
  */
 function buildMergeElementsState<MapsInterface, U extends keyof MapsInterface>(
-  baseDoc: INormalizedDocument<MapsInterface, U>,
-  laterDoc: INormalizedDocument<MapsInterface, U>
+  baseDoc: NormalizedDocument<MapsInterface, U>,
+  laterDoc: NormalizedDocument<MapsInterface, U>
 ): Map<string, IMergeElementsState> {
   const mergeElementsState: Map<string, IMergeElementsState> = new Map();
   visitDocument(
@@ -1544,7 +1544,7 @@ function buildMergeElementsState<MapsInterface, U extends keyof MapsInterface>(
  * Creates a shallow copy of the element record with the given type and id, and strips it of
  * all its children.
  *
- * @param {INormalizedDocument<MapsInterface, U> | IMutableDocument<MapsInterface, U>} doc
+ * @param {NormalizedDocument<MapsInterface, U> | MutableDocument<MapsInterface, U>} doc
  * @param {U} elementType
  * @param {Id} elementId
  * @returns {T}
@@ -1553,7 +1553,7 @@ function stripChildrenFromElement<
   MapsInterface,
   U extends keyof MapsInterface,
   T extends IParentedId<U, U>
->(schema: IDocumentSchema<MapsInterface, U>, elementType: U, element: T): T {
+>(schema: DocumentSchema<MapsInterface, U>, elementType: U, element: T): T {
   const clonedElement = {
     ...element
   };

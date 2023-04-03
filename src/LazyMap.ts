@@ -1,4 +1,14 @@
-import {ILazyMutableMap, ILazyMutableMapDelta} from './HTypes';
+export interface LazyMap<K, V> extends Map<K, V> {
+  readonly equalsFn: EqualityFn<V>;
+  hasChanged: () => boolean;
+  originalMap: (key: K) => undefined | V;
+
+  /**
+   * Returns the updated map. If no changes have happened, it returns the
+   * original map
+   */
+  updatedMap: () => Map<K, V>;
+}
 
 interface EqualityFn<T> {
   (left: T, right: T): boolean;
@@ -7,13 +17,16 @@ interface EqualityFn<T> {
 const defaultEquals: EqualityFn<any> = (left: any, right: any) =>
   left === right;
 
-export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
+export class LazyMutableMap<K, V> implements LazyMap<K, V> {
   protected readonly originalValuesMap: Map<K, V>;
   protected valuesMap: Map<K, V>;
   protected added: Map<K, V>;
   protected changed: Map<K, V>;
   protected deleted: Set<K>;
-  private equalityFn: EqualityFn<V>;
+  public readonly equalsFn: EqualityFn<V>;
+  public get [Symbol.toStringTag]() {
+    return 'LazyMutableMap';
+  };
 
   constructor(
     originalMap: Map<K, V>,
@@ -23,12 +36,16 @@ export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
     this.added = new Map();
     this.changed = new Map();
     this.deleted = new Set();
-    this.equalityFn = equalityFn;
+    this.equalsFn = equalityFn;
   }
 
   public hasChanged = (): boolean => {
     return this.originalValuesMap !== this.valuesMap;
   };
+
+  public get size() {
+    return this.valuesMap.size;
+  }
 
   public clear = () => {
     if (this.originalValuesMap.size === 0 && this.valuesMap.size === 0) {
@@ -41,11 +58,26 @@ export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
     this.valuesMap.clear();
   };
 
-  public set = (key: K, value: V): LazyMutableMap<K, V> => {
+  public forEach(
+    callbackFn: (value: V, key: K, map: Map<K, V>) => void,
+    thisArg?: any
+  ) {
+    this.valuesMap.forEach(callbackFn);
+  }
+
+  public entries(): IterableIterator<[K, V]> {
+    return this.valuesMap.entries();
+  }
+
+  public [Symbol.iterator](): IterableIterator<[K, V]> {
+    return this.valuesMap[Symbol.iterator]();
+  }
+
+  public set = (key: K, value: V): this => {
     if (
       this.valuesMap === this.originalValuesMap &&
       this.valuesMap.has(key) &&
-      this.equalityFn(this.originalValuesMap.get(key)!, value)
+      this.equalsFn(this.originalValuesMap.get(key)!, value)
     ) {
       return this;
     }
@@ -87,7 +119,7 @@ export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
     return this.valuesMap.delete(key);
   };
 
-  public getMap = (): Map<K, V> => this.valuesMap;
+  public updatedMap = (): Map<K, V> => this.valuesMap;
 
   public keys = (): IterableIterator<K> => this.valuesMap.keys();
 
@@ -99,14 +131,6 @@ export class LazyMutableMap<K, V> implements ILazyMutableMap<K, V> {
     }
   };
 
-  public getOriginal = (key: K): undefined | V =>
+  public originalMap = (key: K): undefined | V =>
     this.originalValuesMap.get(key);
-
-  public delta = (): ILazyMutableMapDelta<K, V> => {
-    return {
-      added: this.added,
-      changed: this.changed,
-      deleted: this.deleted
-    };
-  };
 }

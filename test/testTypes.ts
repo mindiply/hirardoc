@@ -1,93 +1,97 @@
 import {
+  DocumentSchema,
+  ElementId,
   Id,
-  IDocumentSchema,
-  INormalizedDocument,
-  IParentedId,
-  IParentedNode
+  LinksArray,
+  LinkType,
+  NormalizedDocument,
+  TreeNode
 } from '../src';
 import {omit} from 'lodash';
+import {createNormalizedDocument} from '../src/HDocument';
 
 export interface IRootFields {
   name: string;
   createdAt: Date;
 }
 
-export interface IRoot extends IParentedId<'Root', null>, IRootFields {
-  children: Id[];
-}
+export type IRoot = TreeNode<
+  ITestDocElementsMap,
+  'Root',
+  IRootFields,
+  {
+    children: LinksArray<'Node'>;
+  },
+  {}
+>;
 
-export interface IRootNode extends IParentedNode<'Root', null>, IRootFields {
+export interface IRootNode extends ElementId<'Root'>, IRootFields {
   children: INodeNode[];
 }
 
 export interface INodeFields {
   text: string;
   isChecked: boolean;
-}
-
-export interface INode
-  extends IParentedId<'Node', 'Root' | 'Node'>,
-    INodeFields {
-  children: Id[];
   membersIds: Id[];
 }
 
-export interface INodeNode
-  extends IParentedNode<'Node', IRootNode | INodeNode>,
-    INodeFields {
+export type INode = TreeNode<
+  ITestDocElementsMap,
+  'Node',
+  INodeFields,
+  {
+    children: LinksArray<'Node'>;
+  },
+  {}
+>;
+
+export interface INodeNode extends ElementId<'Node'>, INodeFields {
   children: INodeNode[];
 }
 
 export interface ITestDocElementsMap {
-  Root: Map<Id, IRoot>;
-  Node: Map<Id, INode>;
+  Root: IRoot;
+  Node: INode;
 }
 
-export type TestNormalizeDocument = INormalizedDocument<
+export type TestNormalizeDocument = NormalizedDocument<
   ITestDocElementsMap,
   keyof ITestDocElementsMap
 >;
 
-export const testDocSchema: IDocumentSchema<ITestDocElementsMap> = {
+export const testDocSchema: DocumentSchema<ITestDocElementsMap> = {
   documentType: 'TestDocSchema',
   rootType: 'Root',
-  types: {
-    Root: {
-      children: [{__schemaType: 'Node', notNull: true}]
-    },
+  nodeTypes: {
     Node: {
-      children: [
-        {
-          __schemaType: 'Node',
-          notNull: true
-        }
-      ]
+      __typename: 'Node',
+      children: {
+        children: LinkType.array
+      },
+      data: () => ({
+        membersIds: [],
+        isChecked: false,
+        text: ''
+      }),
+      links: {}
+    },
+    Root: {
+      __typename: 'Root',
+      data: () => ({
+        createdAt: new Date(),
+        name: ''
+      }),
+      links: {},
+      children: {
+        children: LinkType.array
+      }
     }
   }
 };
+
 export const creationDate = new Date();
-export const emptyTestDocument = (): TestNormalizeDocument => ({
-  maps: {
-    Root: new Map([
-      [
-        1,
-        {
-          __typename: 'Root',
-          _id: 1,
-          createdAt: creationDate,
-          name: 'root',
-          children: [],
-          parentType: null,
-          parentId: null
-        }
-      ]
-    ]),
-    Node: new Map()
-  },
-  rootType: 'Root',
-  rootId: 1,
-  schema: testDocSchema
-});
+export const emptyTestDocument = (): TestNormalizeDocument =>
+  createNormalizedDocument(testDocSchema);
 
 function removeNodeParent(node: INodeNode) {
   // @ts-expect-error
@@ -105,25 +109,9 @@ export function removeParents(root: IRootNode) {
 }
 
 export function emptyNode(): INode {
-  return {
-    __typename: 'Node',
-    _id: 'NOT_SET',
-    children: [],
-    isChecked: false,
-    text: '',
-    membersIds: [],
-    parentType: null,
-    parentId: null
-  };
+  return emptyTestDocument().emptyNode('Node');
 }
 
 export function emptyNodeInfo(): Omit<INode, 'parentId' | 'parentType'> {
-  return {
-    __typename: 'Node',
-    _id: 'NOT_SET',
-    children: [],
-    isChecked: false,
-    text: '',
-    membersIds: []
-  };
+  return emptyTestDocument().emptyNode('Node');
 }

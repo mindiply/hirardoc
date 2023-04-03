@@ -3,8 +3,8 @@ import {omit} from 'lodash';
 import {
   HDocOperation,
   Id,
-  IMutableDocument,
-  INormalizedDocument,
+  MutableDocument,
+  NormalizedDocument,
   ThreeWayMergeFn
 } from './HTypes';
 import {mutableDocument} from './HDocument';
@@ -137,14 +137,14 @@ export interface OperationInterpreter<
   U extends keyof MapsInterface,
   Operation = any
 > {
-  (mutableDoc: IMutableDocument<MapsInterface, U>, operation: Operation): void;
+  (mutableDoc: MutableDocument<MapsInterface, U>, operation: Operation): void;
 }
 
 export function defaultInterpreter<
   MapsInterface,
   U extends keyof MapsInterface
 >(
-  mutableDoc: IMutableDocument<MapsInterface, U>,
+  mutableDoc: MutableDocument<MapsInterface, U>,
   operation: HDocOperation<MapsInterface, U> | HDocOperation<MapsInterface, U>[]
 ) {
   mutableDoc.applyChanges(operation);
@@ -260,14 +260,14 @@ export interface HBaseDocHistory<
   commit: <Operation>(
     operation: Operation | Operation[],
     userId?: Id | null
-  ) => INormalizedDocument<MapsInterface, U>;
+  ) => NormalizedDocument<MapsInterface, U>;
 
   /**
    * If the last historyEntry that changed the document was an undo command, it will redo
    * the command that the undo undid.
    * @param userId
    */
-  redo: (userId: Id | null) => INormalizedDocument<MapsInterface, U>;
+  redo: (userId: Id | null) => NormalizedDocument<MapsInterface, U>;
 
   /**
    * Returns true if there is at least an undo we can currently redo at the tip
@@ -282,7 +282,7 @@ export interface HBaseDocHistory<
    * it will undo the changes of that record and record here what the state was before that change.
    * @param userId
    */
-  undo: (userId: Id | null) => INormalizedDocument<MapsInterface, U>;
+  undo: (userId: Id | null) => NormalizedDocument<MapsInterface, U>;
 
   /**
    * Returns true if we can undo at least one operation in the current timeline
@@ -300,7 +300,7 @@ export interface HBaseDocHistory<
    */
   documentAtCommitId: (
     commitId?: string
-  ) => INormalizedDocument<MapsInterface, U>;
+  ) => NormalizedDocument<MapsInterface, U>;
 }
 
 /**
@@ -347,7 +347,7 @@ export interface HDocHistory<
   mergeHistoryDelta: (
     historyDelta: HistoryDelta<MapsInterface, U, Checkpoint>,
     userId: Id
-  ) => INormalizedDocument<MapsInterface, U>;
+  ) => NormalizedDocument<MapsInterface, U>;
 }
 
 export interface HDocCheckpointTranslator<
@@ -355,10 +355,10 @@ export interface HDocCheckpointTranslator<
   U extends keyof MapsInterface,
   Checkpoint
 > {
-  hDocToCheckpoint: (doc: INormalizedDocument<MapsInterface, U>) => Checkpoint;
+  hDocToCheckpoint: (doc: NormalizedDocument<MapsInterface, U>) => Checkpoint;
   checkpointToHDoc: (
     checkpoint: Checkpoint
-  ) => INormalizedDocument<MapsInterface, U>;
+  ) => NormalizedDocument<MapsInterface, U>;
 }
 
 class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
@@ -372,7 +372,7 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
 
   constructor(
     entriesOrDoc:
-      | INormalizedDocument<MapsInterface, U>
+      | NormalizedDocument<MapsInterface, U>
       | HistoryRecord<MapsInterface, U, Checkpoint>[],
     initProps: Partial<HDocHistoryOptions<MapsInterface, U, Checkpoint>> = {}
   ) {
@@ -466,7 +466,7 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
 
   public documentAtCommitId = (
     commitId?: string
-  ): INormalizedDocument<MapsInterface, U> => {
+  ): NormalizedDocument<MapsInterface, U> => {
     const targetCommitId = commitId || this.lastCommitId;
     const targetCommitIndex = this._commitIdsIndexMap.get(targetCommitId);
     if (targetCommitIndex === undefined) {
@@ -493,10 +493,10 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
   public commit = <Operation>(
     operation: Operation | Operation[],
     userId: Id | null = null
-  ): INormalizedDocument<MapsInterface, U> => {
+  ): NormalizedDocument<MapsInterface, U> => {
     const mutableDoc = mutableDocument(
       this.documentAtCommitId()
-    ) as unknown as IMutableDocument<MapsInterface, U>;
+    ) as unknown as MutableDocument<MapsInterface, U>;
     const operations = Array.isArray(operation) ? operation : [operation];
     for (const op of operations) {
       this._hDocHistoryOptions.operationInterpreter(mutableDoc, op);
@@ -568,7 +568,7 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
   public mergeHistoryDelta = (
     historyDelta: HistoryDelta<MapsInterface, U, Checkpoint>,
     userId?: Id
-  ): INormalizedDocument<MapsInterface, U> => {
+  ): NormalizedDocument<MapsInterface, U> => {
     /* Check if we can fast forward the delta passed through */
     if (this.lastCommitId === historyDelta.fromCommitId) {
       // We can fast forward, just add the entries from the
@@ -630,7 +630,7 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
     return this.prevUndoCommitIdOf(this.lastCommitId) !== null;
   };
 
-  public redo = (userId: Id | null): INormalizedDocument<MapsInterface, U> => {
+  public redo = (userId: Id | null): NormalizedDocument<MapsInterface, U> => {
     const tipCommitId = this.lastCommitId;
     if (!tipCommitId) {
       return this.documentAtCommitId();
@@ -676,7 +676,7 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
 
   public canUndo = () => this.nextCommitIdToUndoTo(this.lastCommitId) !== null;
 
-  public undo = (userId: Id | null): INormalizedDocument<MapsInterface, U> => {
+  public undo = (userId: Id | null): NormalizedDocument<MapsInterface, U> => {
     const tipCommitId = this.lastCommitId;
     if (!tipCommitId) {
       return this.documentAtCommitId();
@@ -733,9 +733,9 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
     providedMergeDelta: HistoryDelta<MapsInterface, U, Checkpoint>,
     localToCommitId: string
   ): {
-    baseTree: INormalizedDocument<MapsInterface, U>;
-    mergeToTree: INormalizedDocument<MapsInterface, U>;
-    mergeFromTree: INormalizedDocument<MapsInterface, U>;
+    baseTree: NormalizedDocument<MapsInterface, U>;
+    mergeToTree: NormalizedDocument<MapsInterface, U>;
+    mergeFromTree: NormalizedDocument<MapsInterface, U>;
     lastCommonCommitId: string;
     nOperationsToApply: number;
   } => {
@@ -927,11 +927,11 @@ class HDocHistoryImpl<MapsInterface, U extends keyof MapsInterface, Checkpoint>
     return this._maxOpsWithoutCheckpoint;
   };
 
-  private hDocToCheckpoint = (doc: INormalizedDocument<MapsInterface, U>) =>
+  private hDocToCheckpoint = (doc: NormalizedDocument<MapsInterface, U>) =>
     doc as unknown as Checkpoint;
 
   private checkpointToHDoc = (checkpoint: Checkpoint) =>
-    checkpoint as unknown as INormalizedDocument<MapsInterface, U>;
+    checkpoint as unknown as NormalizedDocument<MapsInterface, U>;
 
   public cloneHDocHistory() {
     return new HDocHistoryImpl(this._historyEntries, this.hDocHistoryOptions);
@@ -944,7 +944,7 @@ export function initHDocHistory<
   Checkpoint
 >(
   documentOrHistoryRecords:
-    | INormalizedDocument<MapsInterface, U>
+    | NormalizedDocument<MapsInterface, U>
     | HistoryRecord<MapsInterface, U, Checkpoint>[],
   options: HDocHistoryOptions<MapsInterface, U, Checkpoint>
 ): HDocHistory<MapsInterface, U, Checkpoint> {

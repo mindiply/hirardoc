@@ -4,130 +4,131 @@ export interface IId {
   _id: Id;
 }
 
-export type KeysOfMappedTypes<T> = {
-  [F in keyof T]: T[F] extends Map<Id, infer S> ? keyof S : never;
-};
-
-export type MappedParentedTypesFields<MapsInterface> = {
-  [F in keyof MapsInterface]: MapsInterface[F] extends Map<Id, infer S>
-    ? S extends IParentedId
-      ? F
-      : never
-    : never;
-}[keyof MapsInterface];
-
-export type MappedParentedTypes<
-  MapsInterface,
-  U extends keyof MapsInterface = keyof MapsInterface
-> = {
-  [F in U]: MapsInterface[F] extends Map<Id, infer S>
-    ? S extends IParentedId<F, U>
-      ? S
-      : never
-    : never;
-};
-
-export type ValueOf<T> = T[keyof T];
-
-/**
- * Lists all the fields of all the types that are mapped in the
- * maps interface passed as parameter
- */
-export type AllMappedTypesFields<T> = ValueOf<KeysOfMappedTypes<T>>;
-
-/**
- * Lists all the types that are mapped in the Maps interface T.
- */
-export type AllMappedTypes<T> = ValueOf<MappedParentedTypes<T>>;
-
-export interface IElementId<U> extends IId {
+export interface ElementId<U> extends IId {
   __typename: U;
 }
 
-export interface IParentedId<ElementType = any, ParentType = any>
-  extends IElementId<ElementType> {
-  parentId: null | Id;
-  parentType: null | ParentType;
+export enum LinkType {
+  single,
+  array,
+  set
+}
+export type SingleLink<LinkedTypename> = ElementId<LinkedTypename> | null;
+
+export type LinksArray<LinkedTypename> = ElementId<LinkedTypename>[];
+
+/**
+ * A linksSet represents a parent to multiple children link where
+ * the order between links is not important, the existence of it is
+ */
+export type LinksSet<LinkedTypename> = Map<string, ElementId<LinkedTypename>>;
+
+export type NodeLink<LinkedTypename> =
+  | SingleLink<LinkedTypename>
+  | LinksSet<LinkedTypename>
+  | LinksArray<LinkedTypename>;
+
+export interface ParentToChildLinkField<ParentType, ParentField>
+  extends ElementId<ParentType> {
+  parentField: ParentField;
+  index?: number;
 }
 
-export type EntitiesMaps<
-  MapsInterface,
-  U extends keyof MapsInterface = keyof MapsInterface
-> = {
-  [F in U]: MapsInterface[F] extends Map<Id, infer S>
-    ? [S] extends [IParentedId<U, U>]
-      ? Map<Id, S>
-      : S extends IParentedId<U, U>
-      ? S
-      : never
+export type TreeNode<
+  NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>,
+  NodeType extends keyof NodesDef,
+  NodeData extends Record<any, any>,
+  ChildrenFields extends Record<any, NodeLink<keyof NodesDef>>,
+  LinksFields extends Record<any, NodeLink<keyof NodesDef>>
+> = ElementId<NodeType> &
+  NodeData &
+  ChildrenFields &
+  LinksFields & {
+    parent: null | ParentToChildLinkField<
+      keyof NodesDef,
+      keyof NodeChildrenOfTreeNode<NodesDef, keyof NodesDef>
+    >;
+  };
+
+export type NodeDataOfTreeNode<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  N extends keyof NodesDef
+> = NodesDef[N] extends TreeNode<NodesDef, N, infer NodeData, any, any>
+  ? NodeData
+  : never;
+
+export type NodeChildrenOfTreeNode<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  N extends keyof NodesDef
+> = NodesDef[N] extends TreeNode<NodesDef, N, any, infer ChildrenFields, any>
+  ? ChildrenFields
+  : never;
+
+export type NodeLinksOfTreeNode<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  N extends keyof NodesDef
+> = NodesDef[N] extends TreeNode<NodesDef, N, any, any, infer LinksFields>
+  ? LinksFields
+  : never;
+
+type ChildrenLinkTypes<ChildrenDef extends Record<any, any>> = {
+  [LinkName in keyof ChildrenDef]: ChildrenDef[LinkName] extends NodeLink<any>
+    ? LinkType
     : never;
 };
 
-/**
- * A lazy mutable delta represents the differences between the map the
- * lazy mutable map was initialized with and the change operations that have
- * subsequently been performed on it.
- */
-export interface ILazyMutableMapDelta<K, V> {
-  added: Map<K, V>;
-  changed: Map<K, V>;
-  deleted: Set<K>;
-}
-
-/**
- * Wraps a Javascript map, creating lazily a new shallow copy if
- * we perform changes on it.
- *
- * It allows using the object as a mutable map and return a new copy
- * only if any changes happened withing some potentially mutating code.
- *
- * The typical use is withing non-trivial reducers, where changes may
- * happen after a number of different conditions, and where we don't want
- * to create a new map if we don't need to nor keep checking if we need a new
- * version of the original map.
- */
-export interface ILazyMutableMap<K, V> {
-  hasChanged: () => boolean;
-  has: (key: K) => boolean;
-  set: (key: K, value: V) => ILazyMutableMap<K, V>;
-  get: (key: K) => undefined | V;
-  getOriginal: (key: K) => undefined | V;
-  delete: (key: K) => boolean;
-  clear: () => void;
-  keys: () => IterableIterator<K>;
-  values: () => IterableIterator<V>;
-  getMap: () => Map<K, V>;
-  delta: () => ILazyMutableMapDelta<K, V>;
-}
-
-export type MutableEntitiesMaps<
-  MapsInterface,
-  U extends keyof MapsInterface = keyof MapsInterface
-> = {
-  [F in U]: MapsInterface[F] extends Map<Id, infer S>
-    ? ILazyMutableMap<Id, S>
+type LinksTypes<LinksDef extends Record<any, NodeLink<any>>> = {
+  [LinkName in keyof LinksDef]: LinksDef[LinkName] extends NodeLink<any>
+    ? LinkType
     : never;
 };
-/**
- * Each element in the path that from the root of the document
- * brings us to an element
- */
-export type PathElement<MapsInterface> =
-  | number
-  | AllMappedTypesFields<MapsInterface>;
-/**
- * The type of Path elements we can find within a normalized entity is more
- * constrained.
- */
-export type SubEntityPathElement<MapsInterface> = [
-  AllMappedTypesFields<MapsInterface>,
-  number
-];
-/**
- * A path identifies uniquely an element within the hierarchical
- * document, or the fields withing an element.
- */
-export type Path<MapsInterface> = PathElement<MapsInterface>[];
+
+export interface TreeNodeSchema<
+  NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>,
+  NodeType extends keyof NodesDef,
+  NodeData,
+  ChildrenFields extends Record<any, NodeLink<keyof NodesDef>>,
+  LinksFields extends Record<any, NodeLink<keyof NodesDef>>
+> {
+  __typename: NodeType;
+  data: () => NodeData;
+  children: ChildrenLinkTypes<ChildrenFields>;
+  links?: LinksTypes<LinksFields>;
+}
+
+export type SchemaTreeNodes<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >
+> = {
+  [T in keyof NodesDef]: TreeNodeSchema<
+    NodesDef,
+    T,
+    NodeDataOfTreeNode<NodesDef, T>,
+    NodeChildrenOfTreeNode<NodesDef, T>,
+    NodeLinksOfTreeNode<NodesDef, T>
+  >;
+};
+
+export type AllChildrenFields<NodeDef> = NodeDef extends TreeNode<
+  any,
+  any,
+  any,
+  infer ChildrenDef,
+  any
+>
+  ? keyof ChildrenDef
+  : never;
 
 /**
  * A normalized document represents a tree like document made
@@ -136,37 +137,100 @@ export type Path<MapsInterface> = PathElement<MapsInterface>[];
  * Entities refer to each other via Ids, and there is a root element
  * pointed to by element type and id.
  *
- * All the data in the document is captured via maps of Id, entities,
- * one map for each data type.
  */
-export interface INormalizedDocument<
-  MapsInterface,
-  U extends keyof MapsInterface
+export interface NormalizedDocument<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef = keyof NodesDef
 > {
-  /**
-   * The schema that links the various entities to each other
-   */
-  readonly schema: IDocumentSchema<MapsInterface, U>;
+  readonly schema: DocumentSchema<NodesDef, R>;
+
+  [Symbol.iterator](): IterableIterator<NodesDef[keyof NodesDef]>;
+
+  rootId: ElementId<R>;
 
   /**
-   * The element type within the maps field that contains the root
-   * element of the document
+   * Given a type of element and its id, it returns the path
+   * the node has in the document.
+   *
+   * @param elementTypeMap
+   * @param elementId
    */
-  rootType: U;
+  pathForElementWithId: (
+    elementTypeMap: keyof NodesDef,
+    elementId: Id
+  ) => Path<NodesDef>;
 
   /**
-   * The Id of the root element of the document, whose type is designated
-   * by rootType
+   * Given a path, it returns the type of element and element id that
+   * corresponds to the path, if any.
+   *
+   * If the root context is provided null is returned.
+   *
+   * If the path does not point to an element or the root context, an error
+   * is returned.
+   *
+   * @param {Path} path
+   * @returns {{_id: Id; type: U}}
    */
-  rootId: Id;
+  idAndTypeForPath: (path: Path<NodesDef>) => ElementId<keyof NodesDef>;
 
-  /**
-   * The maps field contains the internal normalised databse of the document.
-   * One Map Id -> entity for each  element type in the document.
-   */
-  maps: EntitiesMaps<MapsInterface, U>;
+  getNode: <Type extends keyof NodesDef>(
+    nodeIId: ElementId<Type>
+  ) => NodesDef[Type] | null;
+
+  emptyNode: <Type extends keyof NodesDef>(
+    nodeType: Type,
+    nodeId?: Id
+  ) => NodesDef[Type];
 }
 
+export interface SetPathElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  ParentType extends keyof NodesDef = keyof NodesDef
+> {
+  field: AllChildrenFields<NodesDef[ParentType]>;
+  nodeType: keyof NodesDef;
+  nodeId: Id;
+}
+
+export interface ArrayPathElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  ParentType extends keyof NodesDef = keyof NodesDef
+> {
+  field: AllChildrenFields<NodesDef[ParentType]>;
+  index: number;
+}
+
+/**
+ * Each element in the path that from the root of the document
+ * brings us to an element
+ */
+export type PathElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  ParentType extends keyof NodesDef = keyof NodesDef
+> =
+  | AllChildrenFields<NodesDef[ParentType]>
+  | SetPathElement<NodesDef, ParentType>
+  | ArrayPathElement<NodesDef, ParentType>;
+
+export type Path<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >
+> = PathElement<NodesDef>[];
 export enum HDocCommandType {
   INSERT_ELEMENT = 'InsertElementChange',
   CHANGE_ELEMENT = 'ChangeElementChange',
@@ -174,119 +238,91 @@ export enum HDocCommandType {
   MOVE_ELEMENT = 'MoveElementChange'
 }
 
-export interface IReplayableElementCommand {
-  __typename: HDocCommandType;
-}
-
-export type ElementInfo<T extends IParentedId<any, any>> = Omit<
-  T,
-  '_id' | 'parentId' | 'parentType'
-> &
-  Partial<Omit<IParentedId, '__typename'>>;
-
-export interface IInsertElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface>,
-  T extends IParentedId<U, U>
-> extends IReplayableElementCommand {
+export interface InsertElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  ChildTypename extends keyof NodesDef = keyof NodesDef,
+  ParentTypename extends keyof NodesDef = keyof NodesDef
+> {
   __typename: HDocCommandType.INSERT_ELEMENT;
-  parent: Path<MapsInterface> | IElementId<U>;
-  position: SubEntityPathElement<MapsInterface>;
-  element: ElementInfo<T>;
+  parent: Path<NodesDef> | ElementId<ParentTypename>;
+  position: PathElement<NodesDef, ParentTypename>;
+  element: {__typeName: ChildTypename; _id?: Id} & Partial<
+    NodeDataOfTreeNode<NodesDef, ChildTypename>
+  >;
 }
 
-export interface IChangeElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface>,
-  T extends IParentedId<U, U>
-> extends IReplayableElementCommand {
+export interface ChangeElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  ChildTypename extends keyof NodesDef = keyof NodesDef
+> {
   __typename: HDocCommandType.CHANGE_ELEMENT;
-  element: Path<MapsInterface> | IElementId<U>;
-  changes: Partial<T> & Pick<T, '__typename'>;
+  element: Path<NodesDef> | ElementId<ChildTypename>;
+  changes: {__typename: ChildTypename} & Partial<
+    NodeDataOfTreeNode<NodesDef, ChildTypename>
+  >;
 }
 
-export interface IDeleteElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
-> extends IReplayableElementCommand {
+export interface DeleteElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  NodeTypename extends keyof NodesDef = keyof NodesDef
+> {
   __typename: HDocCommandType.DELETE_ELEMENT;
-  element: Path<MapsInterface> | IElementId<U>;
+  element: Path<NodesDef> | ElementId<NodeTypename>;
 }
 
-export interface IMoveElement<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface>,
-  T extends IParentedId<U, U>
-> extends IReplayableElementCommand {
+export interface MoveElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  TargetTypename extends keyof NodesDef = keyof NodesDef,
+  ParentTypename extends keyof NodesDef = keyof NodesDef
+> {
   __typename: HDocCommandType.MOVE_ELEMENT;
-  element: Path<MapsInterface> | IElementId<U>;
-  toParent: Path<MapsInterface> | IElementId<U>;
-  toPosition: SubEntityPathElement<MapsInterface>;
-  changes?: Pick<T, '__typename'> & Partial<Omit<T, '__typename'>>;
+  element: Path<NodesDef> | ElementId<TargetTypename>;
+  toParent: Path<NodesDef> | ElementId<ParentTypename>;
+  toPosition: PathElement<NodesDef, ParentTypename>;
+  changes?: Partial<NodeDataOfTreeNode<NodesDef, TargetTypename>>;
 }
 
 export type HDocOperation<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>,
-  T extends IParentedId<U, U> = AllMappedTypes<MapsInterface>
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  TargetTypename extends keyof NodesDef = keyof NodesDef,
+  ParentTypename extends keyof NodesDef = keyof NodesDef
 > =
-  | IInsertElement<MapsInterface, U, T>
-  | IChangeElement<MapsInterface, U, T>
-  | IDeleteElement<MapsInterface, U>
-  | IMoveElement<MapsInterface, U, T>;
+  | InsertElement<NodesDef, TargetTypename, ParentTypename>
+  | ChangeElement<NodesDef, TargetTypename>
+  | DeleteElement<NodesDef, TargetTypename>
+  | MoveElement<NodesDef, TargetTypename, ParentTypename>;
 
-// Schema related types
-export interface IFieldEntityReference<T> {
-  __schemaType: T;
-  notNull?: boolean;
-}
-
-export type EntityReferences<T> = {
-  [fieldName: string]: [IFieldEntityReference<T>];
-};
+export type ValueOf<T> = T[keyof T];
 
 /**
  * The document schema describes the shape of a normalized document,
  * allowing navigating the hierarchy while using IDs between entities
  */
-export type IDocumentSchema<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
-> = {types: {[P in U]: EntityReferences<U>}} & {
-  documentType: string;
-  rootType: U;
-};
-
-/**
- * The same as a normalized document, with the only difference being
- * that the maps field now has Lazy maps instead pf Maps.
- */
-export interface INormalizedMutableMapsDocument<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>
+export interface DocumentSchema<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  RootType extends keyof NodesDef = keyof NodesDef
 > {
-  /**
-   * The schema that declares how elements are linked within
-   * the document
-   */
-  readonly schema: IDocumentSchema<MapsInterface, U>;
-
-  /**
-   * The map of LazyMutableMap objects that contain a mutable version
-   * of the internal document database
-   */
-  readonly maps: MutableEntitiesMaps<MapsInterface, U>;
-
-  /**
-   * As in the original document, we track the element type the root of
-   * the document belongs to
-   */
-  readonly rootType: U;
-
-  /**
-   * Id of the root document of the document
-   */
-  readonly rootId: Id;
+  nodeTypes: SchemaTreeNodes<NodesDef>;
+  rootType: RootType;
+  documentType: string;
 }
 
 /**
@@ -298,18 +334,17 @@ export interface INormalizedMutableMapsDocument<
  * that rely on the functions in IMutableDocument to track changes at a lower
  * level of abstraction.
  */
-export interface IReplayChangesDocument<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>,
-  NDoc extends INormalizedDocument<MapsInterface, U> = INormalizedDocument<
-    MapsInterface,
-    U
-  >
-> extends INormalizedMutableMapsDocument<MapsInterface, U> {
+export interface ReplayChangesDocument<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef = keyof NodesDef
+> extends NormalizedDocument<NodesDef, R> {
   /**
    * Get a copy of the original document.
    */
-  readonly originalDocument: NDoc;
+  readonly originalDocument: NormalizedDocument<NodesDef, R>;
 
   /**
    * Get a normalised version of Doc that reflects all the changes
@@ -319,13 +354,13 @@ export interface IReplayChangesDocument<
    *
    * @returns {NormalizedDocument<Doc, K, U>}
    */
-  updatedDocument: () => NDoc;
+  readonly updatedDocument: NormalizedDocument<NodesDef, R>;
 
   /**
    * List of the commands operated on this mutable document since
    * its instantiation for the original normalized document
    */
-  readonly changes: HDocOperation<MapsInterface, U, any>[];
+  readonly changes: HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>[];
 
   /**
    * Applies a series of document changes to the document,
@@ -340,8 +375,8 @@ export interface IReplayChangesDocument<
    */
   applyChanges: (
     changes:
-      | HDocOperation<MapsInterface, U, any>
-      | Array<HDocOperation<MapsInterface, U, any>>
+      | HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>
+      | Array<HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>>
   ) => void;
 }
 
@@ -354,70 +389,61 @@ export interface IReplayChangesDocument<
  *
  * It is also possible to obtain a NormalizedDocument back after the changes have happened.
  */
-export interface IMutableDocument<
-  MapsInterface,
-  U extends keyof EntitiesMaps<MapsInterface> = keyof EntitiesMaps<MapsInterface>,
-  NDoc extends INormalizedDocument<MapsInterface, U> = INormalizedDocument<
-    MapsInterface,
-    U
-  >
-> extends IReplayChangesDocument<MapsInterface, U, NDoc> {
+export interface MutableDocument<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef = keyof NodesDef
+> extends ReplayChangesDocument<NodesDef, R> {
   /**
    * Inserts an element within the document, providing path to the parent
    * and position within the parent (field or field + index)
    *
-   * @param {IInsertElement<ElementType, Doc, U>} insertCommand
+   * @param {InsertElement<ElementType, Doc, U>} insertCommand
    */
-  insertElement: <T extends IParentedId<U, U>>(
-    insertCommand: IInsertElement<MapsInterface, U, T>
-  ) => T;
+  insertElement: <
+    ChildType extends keyof NodesDef,
+    ParentType extends keyof NodesDef
+  >(
+    insertCommand: Omit<
+      InsertElement<NodesDef, ChildType, ParentType>,
+      '__typename'
+    >
+  ) => NodesDef[ChildType];
 
   /**
    * Provided a path to an element in the document, deletes
    * the document from within the document
    *
-   * @param {IDeleteElement<Doc, U>} deleteCommand
+   * @param {DeleteElement<Doc, U>} deleteCommand
    */
-  deleteElement: (deleteCommand: IDeleteElement<MapsInterface, U>) => void;
+  deleteElement: <TargetType extends keyof NodesDef>(
+    deleteCommand: Omit<DeleteElement<NodesDef, TargetType>, '__typename'>
+  ) => void;
 
   /**
    * Provided a path to an element, merge the existing element
    * with the new values provided with the parameter
    *
-   * @param {IChangeElement<ElementType, Doc, U>} changeCommand
+   * @param {ChangeElement<ElementType, Doc, U>} changeCommand
    */
-  changeElement: <T extends IParentedId<U, U>>(
-    changeCommand: IChangeElement<MapsInterface, U, T>
+  changeElement: <TargetType extends keyof NodesDef>(
+    changeCommand: ChangeElement<NodesDef, TargetType>
   ) => void;
 
   /**
    * Provided the path to an element, moves it to a new parent
    * and position withing the document. Optionally you can also change
    * the values of the element being moved at the same time.
-   * @param {IMoveElement<ElementType, Doc, U>} moveCommand
+   * @param {MoveElement<ElementType, Doc, U>} moveCommand
    */
-  moveElement: <T extends IParentedId<U, U>>(
-    moveCommand: IMoveElement<MapsInterface, U, T>
+  moveElement: <
+    TargetTypename extends keyof NodesDef,
+    ParentTypename extends keyof NodesDef
+  >(
+    moveCommand: MoveElement<NodesDef, TargetTypename, ParentTypename>
   ) => void;
-
-  pathForElementWithId: (
-    elementTypeMap: U,
-    elementId: Id
-  ) => Path<MapsInterface>;
-
-  /**
-   * Given a path, it returns the type of element and element id that
-   * corresponds to the path, if any.
-   *
-   * If the root context is provided null is returned.
-   *
-   * If the path does not point to an element or the root context, an error
-   * is returned.
-   *
-   * @param {Path} path
-   * @returns {{_id: Id; type: U}}
-   */
-  idAndTypeForPath: (path: Path<MapsInterface>) => {_id: Id; __typename: U};
 }
 
 export enum DocumentVisitTraversal {
@@ -582,18 +608,22 @@ export interface IElementConflicts<S> {
   positionConflicts?: IPositionConflict;
 }
 
-export type ConflictMapKeys<MapsInterface, U extends keyof MapsInterface> = {
-  [F in U]: MapsInterface[F] extends Map<Id, any> ? F : never;
-}[U];
-
 /**
  * For each mapped element, creates a map Id -> ElementConflicts record.
  * Additional data structure that models conflicts resulting from merging
  * different branches of a document.
  */
-export type ConflictsMap<MapsInterface, U extends keyof MapsInterface> = {
-  [F in U]: MapsInterface[F] extends Map<Id, infer S>
-    ? Map<Id, IElementConflicts<S>>
+export type ConflictsMap<
+  NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>
+> = {
+  [F in keyof NodesDef]: NodesDef[F] extends TreeNode<
+    NodesDef,
+    any,
+    infer NodeData,
+    any,
+    any
+  >
+    ? Map<Id, IElementConflicts<NodeData>>
     : never;
 };
 
@@ -602,16 +632,17 @@ export type ConflictsMap<MapsInterface, U extends keyof MapsInterface> = {
  * visits a HDocument in breadth first format from the
  * document root.
  */
-export interface IVisitor<
-  MapsInterface,
-  U extends keyof MapsInterface = keyof MapsInterface,
+export interface NodeVisitor<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef = keyof NodesDef,
   Context = any
 > {
   (
-    doc:
-      | INormalizedDocument<MapsInterface, U>
-      | INormalizedMutableMapsDocument<MapsInterface, U>,
-    nodeType: U,
+    doc: NormalizedDocument<NodesDef, R>,
+    nodeType: keyof NodesDef,
     nodeId: Id,
     context?: Context
   ): void;
@@ -623,7 +654,7 @@ export interface IVisitor<
  * It includes a working version of the document and a map of the conflicts
  * the merge generated, if any.
  */
-export interface II3MergeResult<NorDoc extends INormalizedDocument<any, any>> {
+export interface II3MergeResult<NorDoc extends NormalizedDocument<any, any>> {
   /**
    * The merged document, which is still a normalized document. It contains the
    * provisional victors of any conflicts generated during the merge
@@ -634,7 +665,7 @@ export interface II3MergeResult<NorDoc extends INormalizedDocument<any, any>> {
    * For each entity type in the normalised document, it has a conflict map
    * that has one record for each element of that type that has at least a conflict.
    */
-  conflicts: ConflictsMap<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
+  conflicts: ConflictsMap<NodesDefOfDoc<NorDoc>>;
 }
 
 /**
@@ -653,6 +684,11 @@ export interface IGetterSetter<T> {
   (value?: T): T;
 }
 
+export type NodesDefOfDoc<NorDoc extends NormalizedDocument<any, any>> =
+  NorDoc extends NormalizedDocument<infer NodesDef> ? NodesDef : never;
+
+export type RootTypeOfDoc<NorDoc extends NormalizedDocument<any, any>> =
+  NorDoc extends NormalizedDocument<any, infer RootType> ? RootType : never;
 /**
  * The merge context is used during a three way merge to track progress
  * and allow higher-level data structures to change how the merge works
@@ -661,23 +697,17 @@ export interface IGetterSetter<T> {
  * The overridable functions during the merge always receive this object
  * as part of their list of parameters
  */
-export interface II3WMergeContext<
-  NorDoc extends INormalizedDocument<any, any>
-> {
+export interface II3WMergeContext<NorDoc extends NormalizedDocument<any, any>> {
   myElementsMergeState: Map<string, IMergeElementsState>;
   theirElementsMergeState: Map<string, IMergeElementsState>;
   baseDoc: NorDoc;
   myDoc: IGetterSetter<NorDoc>;
   theirDoc: IGetterSetter<NorDoc>;
-  elementsToDelete: Array<{__typename: UOfNormDoc<NorDoc>; _id: Id}>;
-  mergedDoc: IMutableDocument<
-    MapsOfNormDoc<NorDoc>,
-    UOfNormDoc<NorDoc>,
-    NorDoc
-  >;
-  conflicts: ConflictsMap<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>;
-  overrides?: MergeOverridesMap<NorDoc, any>;
-  defaultHooks: IMergeHooks<NorDoc>;
+  elementsToDelete: Array<{__typename: keyof NodesDefOfDoc<NorDoc>; _id: Id}>;
+  mergedDoc: MutableDocument<NodesDefOfDoc<NorDoc>, RootTypeOfDoc<NorDoc>>;
+  conflicts: ConflictsMap<NodesDefOfDoc<NorDoc>>;
+  overrides?: MergeOverridesMap<NodesDefOfDoc<NorDoc>>;
+  defaultHooks: MergeHooks<NorDoc>;
 }
 
 /**
@@ -713,8 +743,8 @@ export interface IOnIncompatibleArrayElementsResult {
  * can deviate from the default handling of merges.
  */
 export interface IMergeElementOverrides<
-  ElementType extends IParentedId,
-  NorDoc extends INormalizedDocument<any, any>
+  NorDoc extends NormalizedDocument<any, any>,
+  ElementTypename extends keyof NodesDefOfDoc<NorDoc>
 > {
   /**
    * Comparison used to determine the processing order of an array linked field. The elements
@@ -727,10 +757,10 @@ export interface IMergeElementOverrides<
    * @returns {number}
    */
   cmpSiblings: (
-    base: ElementType | null,
-    a: ElementType | null,
-    b: ElementType | null,
-    mergeContext: II3WMergeContext<NorDoc>
+    base: NodesDefOfDoc<NorDoc>[ElementTypename] | null,
+    a: NodesDefOfDoc<NorDoc>[ElementTypename] | null,
+    b: NodesDefOfDoc<NorDoc>[ElementTypename] | null,
+    mergeContext: II3WMergeContext<NodesDefOfDoc<NorDoc>>
   ) => number;
 
   /**
@@ -744,9 +774,9 @@ export interface IMergeElementOverrides<
    * @returns {ElementInfoConflicts<ElementType>}
    */
   mergeElementInfo: (
-    base: ElementType | null,
-    a: ElementType | null,
-    b: ElementType | null,
+    base: NodesDefOfDoc<NorDoc>[ElementTypename] | null,
+    a: NodesDefOfDoc<NorDoc>[ElementTypename] | null,
+    b: NodesDefOfDoc<NorDoc>[ElementTypename] | null,
     mergeContext: II3WMergeContext<NorDoc>
   ) => void;
 
@@ -791,8 +821,8 @@ export interface IMergeElementOverrides<
    */
   moveToMergePosition: (
     elementId: Id,
-    toParentPath: Path<MapsOfNormDoc<NorDoc>>,
-    toPosition: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    toParentPath: Path<NodesDefOfDoc<NorDoc>>,
+    toPosition: PathElement<NodesDefOfDoc<NorDoc>>,
     mergeContext: II3WMergeContext<NorDoc>
   ) => void;
 
@@ -806,11 +836,11 @@ export interface IMergeElementOverrides<
    * @returns {ElementType}
    */
   addElement: (
-    element: ElementType,
-    parentPath: Path<MapsOfNormDoc<NorDoc>>,
-    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    element: NodesDefOfDoc<NorDoc>[ElementTypename],
+    parentPath: Path<NodesDefOfDoc<NorDoc>>,
+    position: PathElement<NodesDefOfDoc<NorDoc>>,
     mergeContext: II3WMergeContext<NorDoc>
-  ) => ElementType;
+  ) => NodesDefOfDoc<NorDoc>[ElementTypename];
 
   /**
    * Called when an element is present in all versions of the document,
@@ -832,14 +862,14 @@ export interface IMergeElementOverrides<
    */
   onIncompatibleElementVersions: (
     elementId: Id,
-    parentPath: Path<MapsOfNormDoc<NorDoc>>,
-    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    parentPath: Path<NodesDefOfDoc<NorDoc>>,
+    position: PathElement<NodesDefOfDoc<NorDoc>>,
     versionMoved: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
     mergeContext: II3WMergeContext<NorDoc>
   ) => IOnIncompatibleArrayElementsResult;
 }
 
-export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
+export interface MergeHooks<NorDoc extends NormalizedDocument<any, any>> {
   /**
    * Comparison used to determine the processing order of an array linked field. The elements
    * compared will be from the two later branches of a three-way merge to determine which
@@ -850,11 +880,11 @@ export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
    * @param {II3WMergeContext<MapsInterface, U>} mergeContext
    * @returns {number}
    */
-  cmpSiblings: (
-    elementType: UOfNormDoc<NorDoc>,
-    base: IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> | null,
-    a: IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> | null,
-    b: IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>> | null,
+  cmpSiblings: <ElementType extends keyof NodesDefOfDoc<NorDoc>>(
+    elementType: ElementType,
+    base: NodesDefOfDoc<NorDoc>[ElementType] | null,
+    a: NodesDefOfDoc<NorDoc>[ElementType] | null,
+    b: NodesDefOfDoc<NorDoc>[ElementType] | null,
     mergeContext: II3WMergeContext<NorDoc>
   ) => number;
 
@@ -869,22 +899,28 @@ export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
    * @returns {ElementInfoConflicts<ElementType>}
    */
   mergeElementInfo: <
-    T extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>,
-    K extends keyof T = keyof T
+    ElementType extends keyof NodesDefOfDoc<NorDoc>,
+    K extends keyof NodeDataOfTreeNode<
+      NodesDefOfDoc<NorDoc>[ElementType],
+      keyof NodesDefOfDoc<NorDoc>
+    > = keyof NodeDataOfTreeNode<
+      NodesDefOfDoc<NorDoc>[ElementType],
+      keyof NodesDefOfDoc<NorDoc>
+    >
   >(
     mergeContext: II3WMergeContext<NorDoc>,
-    elementType: UOfNormDoc<NorDoc>,
-    base: T | null,
-    a: T | null,
-    b: T | null,
+    elementType: ElementType,
+    base: NodesDefOfDoc<NorDoc>[ElementType] | null,
+    a: NodesDefOfDoc<NorDoc>[ElementType] | null,
+    b: NodesDefOfDoc<NorDoc>[ElementType] | null,
     ignoreFields?: K[]
   ) => void;
 
   /**
    * Allows customising how an element is removed from the merging tree
    */
-  onDeleteElement: (
-    elementType: UOfNormDoc<NorDoc>,
+  onDeleteElement: <ElementType extends keyof NodesDefOfDoc<NorDoc>>(
+    elementType: ElementType,
     elementId: Id,
     mergeContext: II3WMergeContext<NorDoc>
   ) => void;
@@ -910,8 +946,8 @@ export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
    * @param {II3WMergeContext<MapsInterface, U>} mergeContext
    * @returns {boolean}
    */
-  arePositionsCompatible: (
-    elementType: UOfNormDoc<NorDoc>,
+  arePositionsCompatible: <ElementType extends keyof NodesDefOfDoc<NorDoc>>(
+    elementType: ElementType,
     elementId: Id,
     fromSide: ProcessingOrderFrom,
     mergeContext: II3WMergeContext<NorDoc>
@@ -921,11 +957,11 @@ export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
    * Called when an element is moved to a different position in the merged document.
    * Allows documents to use their domain aware move functions.
    */
-  moveToMergePosition: (
-    elementType: UOfNormDoc<NorDoc>,
+  moveToMergePosition: <ElementType extends keyof NodesDefOfDoc<NorDoc>>(
+    elementType: ElementType,
     elementId: Id,
-    toParentPath: Path<MapsOfNormDoc<NorDoc>>,
-    toPosition: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    toParentPath: Path<NodesDefOfDoc<NorDoc>>,
+    toPosition: PathElement<NodesDefOfDoc<NorDoc>>,
     mergeContext: II3WMergeContext<NorDoc>
   ) => void;
 
@@ -938,15 +974,13 @@ export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
    * @param {SubEntityPathElement<MapsInterface>} position
    * @returns {ElementType}
    */
-  addElement: <
-    ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
-  >(
-    elementType: UOfNormDoc<NorDoc>,
-    element: ElementType,
-    parentPath: Path<MapsOfNormDoc<NorDoc>>,
-    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+  addElement: <ChildType extends keyof NodesDefOfDoc<NorDoc>>(
+    elementType: ChildType,
+    element: NodesDefOfDoc<NorDoc>[ChildType],
+    parentPath: Path<NodesDefOfDoc<NorDoc>>,
+    position: PathElement<NodesDefOfDoc<NorDoc>>,
     mergeContext: II3WMergeContext<NorDoc>
-  ) => ElementType;
+  ) => NodesDefOfDoc<NorDoc>[ChildType];
 
   /**
    * Called when an element is present in all versions of the document,
@@ -966,26 +1000,25 @@ export interface IMergeHooks<NorDoc extends INormalizedDocument<any, any>> {
    * @returns {boolean} return true if you added a node at the current position
    *          in the merged array
    */
-  onIncompatibleElementVersions: (
-    elementType: UOfNormDoc<NorDoc>,
+  onIncompatibleElementVersions: <
+    ElementType extends keyof NodesDefOfDoc<NorDoc>
+  >(
+    elementType: ElementType,
     elementId: Id,
-    parentPath: Path<MapsOfNormDoc<NorDoc>>,
-    position: SubEntityPathElement<MapsOfNormDoc<NorDoc>>,
+    parentPath: Path<NodesDefOfDoc<NorDoc>>,
+    position: PathElement<NodesDefOfDoc<NorDoc>>,
     versionMoved: ProcessingOrderFrom.left | ProcessingOrderFrom.right,
     mergeContext: II3WMergeContext<NorDoc>
   ) => IOnIncompatibleArrayElementsResult;
 }
 
-export type MergeOverridesMap<
-  NorDoc extends INormalizedDocument<any, any>,
-  ElementType extends IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
-> = {
-  [F in UOfNormDoc<NorDoc>]?: Partial<
-    IMergeElementOverrides<ElementType, NorDoc>
+export type MergeOverridesMap<NorDoc extends NormalizedDocument<any, any>> = {
+  [F in keyof NodesDefOfDoc<NorDoc>]?: Partial<
+    IMergeElementOverrides<NorDoc, F>
   >;
 };
 
-export interface IMergeOptions<NorDoc extends INormalizedDocument<any, any>> {
+export interface IMergeOptions<NorDoc extends NormalizedDocument<any, any>> {
   /**
    * During the merge process a mutable document is generated at the start
    * of the merging process to generate the merge tree.
@@ -994,34 +1027,31 @@ export interface IMergeOptions<NorDoc extends INormalizedDocument<any, any>> {
    * starting from a input normalised document.
    *
    * @param {NorDoc} document
-   * @returns {IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>}
+   * @returns {MutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>}
    */
   onCreateMutableDocument?: (
     document: NorDoc
-  ) => IMutableDocument<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, NorDoc>;
+  ) => MutableDocument<NodesDefOfDoc<NorDoc>, RootTypeOfDoc<NorDoc>>;
 
   /**
    * For each element type you can customise how various aspects of the
    * merge operate, so that higher level data structures can keep their
    * own invariants during a merge.
    */
-  elementsOverrides: MergeOverridesMap<NorDoc, any>;
+  elementsOverrides: MergeOverridesMap<NorDoc>;
 }
 
 /**
  * The signature of a three-way merge function. Allows passing in customized three
  * way merge functions to the versioning of documents.
  */
-export interface ThreeWayMergeFn<
-  MapsInterface,
-  U extends keyof MapsInterface
-> {
+export interface ThreeWayMergeFn<NorDoc extends NormalizedDocument<any, any>> {
   (
-    baseDoc: INormalizedDocument<MapsInterface, U>,
-    myDoc: INormalizedDocument<MapsInterface, U>,
-    theirDoc: INormalizedDocument<MapsInterface, U>,
-    options?: IMergeOptions<INormalizedDocument<MapsInterface, U>>
-  ): II3MergeResult<INormalizedDocument<MapsInterface, U>>;
+    baseDoc: NorDoc,
+    myDoc: NorDoc,
+    theirDoc: NorDoc,
+    options?: IMergeOptions<NorDoc>
+  ): II3MergeResult<NorDoc>;
 }
 
 // Represents a denormalized node, where parentType and
@@ -1043,23 +1073,12 @@ export interface IProcessingOrderElement {
   from: ProcessingOrderFrom;
 }
 
-export type MapsOfNormDoc<T> = T extends INormalizedDocument<
-  infer MapsInterface,
-  any
->
-  ? MapsInterface
-  : never;
-
-export type UOfNormDoc<T> = T extends INormalizedDocument<any, infer U>
-  ? U
-  : never;
-
 /**
  * Options that guide the traversal of a hierarchical document
  */
 export interface VisitDocumentOptions<
-  MapsInterface,
-  U extends keyof MapsInterface = keyof MapsInterface,
+  NodesDef,
+  U extends keyof NodesDef = keyof NodesDef,
   Context = any
 > {
   /**
