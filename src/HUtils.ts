@@ -7,7 +7,8 @@ import {
   ArrayPathElement,
   SetPathElement,
   DocumentSchema,
-  TreeNode
+  TreeNode,
+  IId
 } from './HTypes';
 
 export function isId(obj: any): obj is Id {
@@ -72,15 +73,46 @@ export function hasMappedElement<NorDoc extends NormalizedDocument<any, any>>(
  * @returns {EntitiesMaps<MapsInterface>[U] extends Map<Id, infer T> ? T : never}
  */
 export function mappedElement<
-  NorDoc extends NormalizedDocument<any, any>,
-  N extends keyof NodesDefOfDoc<NorDoc>
->(docOrMaps: NorDoc, elementType: N, elementId: Id): NodesDefOfDoc<NorDoc>[N] {
-  const element = docOrMaps.getNode({__typename: elementType, _id: elementId});
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef,
+  N extends keyof NodesDef
+>(
+  docOrMaps: NormalizedDocument<NodesDef, R>,
+  elementType: N,
+  elementId: Id
+): NodesDef[N];
+export function mappedElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef,
+  N extends keyof NodesDef
+>(
+  docOrMaps: NormalizedDocument<NodesDef, R>,
+  elementId: ElementId<N>
+): NodesDef[N];
+export function mappedElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef,
+  N extends keyof NodesDef
+>(
+  docOrMaps: NormalizedDocument<NodesDef, R>,
+  typeOrElId: N | ElementId<N>,
+  _id?: Id
+): NodesDef[N] {
+  const element = docOrMaps.getNode(
+    isElementId(typeOrElId) ? typeOrElId : {__typename: typeOrElId, _id: _id!}
+  );
   if (!element) {
     throw new ReferenceError(
-      `Referential integrity: element ${String(
-        elementType
-      )}.${elementId} not found`
+      `Referential integrity: element ${String(typeOrElId)}.${_id} not found`
     );
   }
   return element;

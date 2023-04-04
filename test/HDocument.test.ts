@@ -54,13 +54,16 @@ describe('Test the basic operations', () => {
     const expectedRootNode = {
       __typename: 'Root',
       _id: 1,
-      data: {createdAt: creationDate, name: 'root'},
+      createdAt: creationDate,
+      name: 'root',
       children: [
         {
           __typename: 'Node',
           _id: 'Node1',
           children: [],
-          data: {isChecked: false, text: 'firstNode', membersIds: []}
+          isChecked: false,
+          text: 'firstNode',
+          membersIds: []
         }
       ]
     };
@@ -78,10 +81,11 @@ describe('Test the basic operations', () => {
     };
     const mutableDoc = mutableDocument(emptyDoc);
     mutableDoc.insertElement(addNodeCmd);
-    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
     expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
       expectedRootNode
     );
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+
     const replayMutableDoc = mutableDocument(emptyDoc);
     replayMutableDoc.applyChanges(mutableDoc.changes);
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
@@ -130,174 +134,102 @@ describe('Test the basic operations', () => {
       children: []
     });
   });
+
+  test('Add and remove one node', () => {
+    const emptyDoc = emptyTestDocument();
+    const expectedRootNode = {
+      __typename: 'Root',
+      _id: 1,
+      createdAt: creationDate,
+      name: 'root',
+      children: []
+    };
+
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement({
+      position: {field: 'children', index: 0},
+      parent: [],
+      element: {
+        __typename: 'Node',
+        _id: 'Node1',
+        isChecked: false,
+        text: 'firstNode',
+        membersIds: []
+      }
+    });
+    mutableDoc.deleteElement({
+      element: [{field: 'children', index: 0}]
+    });
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+    const replayMutableDoc = mutableDocument(emptyDoc);
+    replayMutableDoc.applyChanges(mutableDoc.changes);
+    expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+  });
+
+  // test('Removing a parent node, removes its descendants as well', () => {
+  //   const emptyDoc = emptyTestDocument();
+  //   const addNodeCmd: InsertElement<
+  //     ITestDocElementsMap,
+  //     keyof ITestDocElementsMap,
+  //     INode
+  //   > = {
+  //     __typename: HDocCommandType.INSERT_ELEMENT,
+  //     position: ['children', 0],
+  //     parent: [],
+  //     element: {
+  //       __typename: 'Node',
+  //       _id: 'Node1',
+  //       children: [],
+  //       isChecked: false,
+  //       text: 'firstNode',
+  //       membersIds: []
+  //     }
+  //   };
+  //   const mutableDoc = mutableDocument(emptyDoc);
+  //   mutableDoc.insertElement(addNodeCmd);
+  //   const addNodeCmd2: InsertElement<
+  //     ITestDocElementsMap,
+  //     keyof ITestDocElementsMap,
+  //     INode
+  //   > = {
+  //     __typename: HDocCommandType.INSERT_ELEMENT,
+  //     position: ['children', 0],
+  //     parent: ['children', 0],
+  //     element: {
+  //       __typename: 'Node',
+  //       _id: 'Node2',
+  //       children: [],
+  //       isChecked: false,
+  //       text: 'childNode',
+  //       membersIds: []
+  //     }
+  //   };
+  //   mutableDoc.insertElement(addNodeCmd2);
+  //   const deleteParentNodeCmd: DeleteElement<
+  //     ITestDocElementsMap,
+  //     keyof ITestDocElementsMap
+  //   > = {
+  //     __typename: HDocCommandType.DELETE_ELEMENT,
+  //     element: {
+  //       __typename: 'Node',
+  //       _id: 'Node1'
+  //     }
+  //   };
+  //   mutableDoc.deleteElement(deleteParentNodeCmd);
+  //   const updatedDoc = mutableDoc.updatedDocument();
+  //   expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node1')).toBe(false);
+  //   expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node2')).toBe(false);
+  // });
 });
-//   test('The empty document', () => {
-//     const emptyDoc = emptyTestDocument();
-//     const expectedNodeTree: IRootNode = {
-//       __typename: 'Root',
-//       _id: 1,
-//       createdAt: creationDate,
-//       name: 'root',
-//       children: [],
-//       parent: null
-//     };
-//     expect(denormalizeDocument(emptyDoc)).toMatchObject(expectedNodeTree);
-//   });
-//
-//   test('Added one node', () => {
-//     const emptyDoc = emptyTestDocument();
-//     const expectedRootNode = removeParents({
-//       __typename: 'Root',
-//       _id: 1,
-//       createdAt: creationDate,
-//       name: 'root',
-//       children: [
-//         {
-//           __typename: 'Node',
-//           _id: 'Node1',
-//           children: [],
-//           parent: null,
-//           isChecked: false,
-//           text: 'firstNode'
-//         }
-//       ],
-//       parent: null
-//     });
-//     const addNodeCmd: InsertElement<
-//       ITestDocElementsMap,
-//       keyof ITestDocElementsMap,
-//       INode
-//     > = {
-//       __typename: HDocCommandType.INSERT_ELEMENT,
-//       position: ['children', 0],
-//       parent: [],
-//       element: {
-//         __typename: 'Node',
-//         _id: 'Node1',
-//         children: [],
-//         isChecked: false,
-//         text: 'firstNode',
-//         membersIds: []
-//       }
-//     };
-//     const mutableDoc = mutableDocument(emptyDoc);
-//     mutableDoc.insertElement(addNodeCmd);
-//     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-//     expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
-//       expectedRootNode
-//     );
-//     const replayMutableDoc = mutableDocument(emptyDoc);
-//     replayMutableDoc.applyChanges(mutableDoc.changes);
-//     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
-//       expectedRootNode
-//     );
-//     expect(
-//       denormalizeDocument(replayMutableDoc.updatedDocument())
-//     ).toMatchObject(expectedRootNode);
-//   });
-//
-//   test('Add and remove one node', () => {
-//     const emptyDoc = emptyTestDocument();
-//     const expectedRootNode = removeParents({
-//       __typename: 'Root',
-//       _id: 1,
-//       createdAt: creationDate,
-//       name: 'root',
-//       children: [],
-//       parent: null
-//     });
-//     const addNodeCmd: InsertElement<
-//       ITestDocElementsMap,
-//       keyof ITestDocElementsMap,
-//       INode
-//     > = {
-//       __typename: HDocCommandType.INSERT_ELEMENT,
-//       position: ['children', 0],
-//       parent: [],
-//       element: {
-//         __typename: 'Node',
-//         _id: 'Node1',
-//         children: [],
-//         isChecked: false,
-//         text: 'firstNode',
-//         membersIds: []
-//       }
-//     };
-//     const mutableDoc = mutableDocument(emptyDoc);
-//     mutableDoc.insertElement(addNodeCmd);
-//     const removeNodeCmd: DeleteElement<ITestDocElementsMap> = {
-//       __typename: HDocCommandType.DELETE_ELEMENT,
-//       element: ['children', 0]
-//     };
-//     mutableDoc.deleteElement(removeNodeCmd);
-//     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-//     expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
-//       expectedRootNode
-//     );
-//     const replayMutableDoc = mutableDocument(emptyDoc);
-//     replayMutableDoc.applyChanges(mutableDoc.changes);
-//     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
-//       expectedRootNode
-//     );
-//     expect(
-//       denormalizeDocument(replayMutableDoc.updatedDocument())
-//     ).toMatchObject(expectedRootNode);
-//   });
-//
-//   test('Removing a parent node, removes its descendants as well', () => {
-//     const emptyDoc = emptyTestDocument();
-//     const addNodeCmd: InsertElement<
-//       ITestDocElementsMap,
-//       keyof ITestDocElementsMap,
-//       INode
-//     > = {
-//       __typename: HDocCommandType.INSERT_ELEMENT,
-//       position: ['children', 0],
-//       parent: [],
-//       element: {
-//         __typename: 'Node',
-//         _id: 'Node1',
-//         children: [],
-//         isChecked: false,
-//         text: 'firstNode',
-//         membersIds: []
-//       }
-//     };
-//     const mutableDoc = mutableDocument(emptyDoc);
-//     mutableDoc.insertElement(addNodeCmd);
-//     const addNodeCmd2: InsertElement<
-//       ITestDocElementsMap,
-//       keyof ITestDocElementsMap,
-//       INode
-//     > = {
-//       __typename: HDocCommandType.INSERT_ELEMENT,
-//       position: ['children', 0],
-//       parent: ['children', 0],
-//       element: {
-//         __typename: 'Node',
-//         _id: 'Node2',
-//         children: [],
-//         isChecked: false,
-//         text: 'childNode',
-//         membersIds: []
-//       }
-//     };
-//     mutableDoc.insertElement(addNodeCmd2);
-//     const deleteParentNodeCmd: DeleteElement<
-//       ITestDocElementsMap,
-//       keyof ITestDocElementsMap
-//     > = {
-//       __typename: HDocCommandType.DELETE_ELEMENT,
-//       element: {
-//         __typename: 'Node',
-//         _id: 'Node1'
-//       }
-//     };
-//     mutableDoc.deleteElement(deleteParentNodeCmd);
-//     const updatedDoc = mutableDoc.updatedDocument();
-//     expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node1')).toBe(false);
-//     expect(hasMappedElement(updatedDoc.maps, 'Node', 'Node2')).toBe(false);
-//   });
+
 //
 //   test('Removing a child node keeps the parent', () => {
 //     const emptyDoc = emptyTestDocument();

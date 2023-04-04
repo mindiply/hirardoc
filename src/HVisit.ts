@@ -41,7 +41,9 @@ export function visitDocument<
     typesToVisit
   }: VisitDocumentOptions<NodesDef, keyof NodesDef, Context> = {}
 ) {
-  const elementType = startElement ? startElement.type : doc.rootId.__typename;
+  const elementType = startElement
+    ? startElement.__typename
+    : doc.rootId.__typename;
   const elementId = startElement ? startElement._id : doc.rootId._id;
   const traversableMap = typesToTraverse ? new Set(typesToTraverse) : undefined;
   const visitableMap = typesToVisit ? new Set(typesToVisit) : undefined;
@@ -70,7 +72,7 @@ export function visitDocument<
   }
 }
 
-function breadthFirstNodes<
+export function breadthFirstNodes<
   NodesDef extends Record<
     keyof NodesDef,
     TreeNode<NodesDef, keyof NodesDef, any, any, any>
@@ -140,7 +142,7 @@ function breadthFirstNodes<
   return nodeList;
 }
 
-function depthFirstNodes<
+export function depthFirstNodes<
   NodesDef extends Record<
     keyof NodesDef,
     TreeNode<NodesDef, keyof NodesDef, any, any, any>

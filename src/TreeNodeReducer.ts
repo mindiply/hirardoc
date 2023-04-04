@@ -1,7 +1,9 @@
 import {
   ChangeElement,
   ElementId,
+  HDocCommandType,
   NodeChildrenOfTreeNode,
+  NodeDataOfTreeNode,
   NodeLink,
   TreeNode
 } from './HTypes';
@@ -157,6 +159,17 @@ function nodeChildrenReducer<
   return state;
 }
 
+interface ChangeTreeNodeData<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  N extends keyof NodesDef
+> {
+  __typename: HDocCommandType.CHANGE_ELEMENT;
+  changes: Partial<NodeDataOfTreeNode<NodesDef, N>>;
+}
+
 type TreeNodeAction<
   NodesDef extends Record<
     keyof NodesDef,
@@ -165,7 +178,7 @@ type TreeNodeAction<
   N extends keyof NodesDef
 > =
   | LinkFieldAction<keyof NodeChildrenOfTreeNode<NodesDef, N>, keyof NodesDef>
-  | ChangeElement<NodesDef, N>;
+  | ChangeTreeNodeData<NodesDef, N>;
 
 export function treeNodeReducer<
   NodesDef extends Record<
