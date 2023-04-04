@@ -1,6 +1,7 @@
 import {
   ChangeElement,
   DeleteElement,
+  DocumentVisitTraversal,
   ElementId,
   HDocCommandType,
   HDocOperation,
@@ -11,8 +12,8 @@ import {
   NormalizedDocument,
   Path,
   TreeNode
-} from './HTypes';
-import {LazyMutableMap} from './LazyMap';
+} from "./HTypes";
+import { LazyMutableMap } from "./LazyMap";
 import {
   extractElementId,
   generateNewId,
@@ -21,14 +22,10 @@ import {
   isElementId,
   mappedElement,
   NodeWithIdIterator
-} from './HUtils';
-import {
-  fieldAndIndexOfPosition,
-  idAndTypeForPath,
-  NormalizedDocumentImpl,
-  pathForElementWithId
-} from './HDocument';
-import {treeNodeReducer} from './TreeNodeReducer';
+} from "./HUtils";
+import { fieldAndIndexOfPosition, idAndTypeForPath, NormalizedDocumentImpl, pathForElementWithId } from "./HDocument";
+import { treeNodeReducer } from "./TreeNodeReducer";
+import { visitDocument } from "./HVisit";
 
 class MutableDocumentImpl<
   NodesDef extends Record<
@@ -40,11 +37,7 @@ class MutableDocumentImpl<
 {
   private readonly _originalDoc: NormalizedDocument<NodesDef, R>;
   private _currentNodes: LazyMutableMap<string, NodesDef[keyof NodesDef]>;
-  private readonly _changes: HDocOperation<
-    NodesDef,
-    keyof NodesDef,
-    keyof NodesDef
-  >[];
+  private readonly _changes: HDocOperation<NodesDef, any, any>[];
 
   constructor(originalDoc: NormalizedDocument<NodesDef, R>) {
     this._originalDoc = originalDoc;
@@ -163,14 +156,60 @@ class MutableDocumentImpl<
       }),
       parent: extractElementId(parentNode) as ElementId<ParentType>
     };
-    // @ts-expect-error The insert change type cannot be generalised to keyof
     this.changes.push(insertChange);
     return newElement;
   }
 
   public deleteElement<TargetType extends keyof NodesDef>(
     deleteCommand: Omit<DeleteElement<NodesDef, TargetType>, '__typename'>
-  ) {}
+  ) {
+    const {element} = deleteCommand;
+    const elementId = isElementId(element)
+      ? element
+      : this.idAndTypeForPath(element);
+    const toDeleteElement = this.getNode(elementId);
+    if (!toDeleteElement) {
+      return;
+    }
+    if (toDeleteElement.parent) {
+      const parentNode = this.getNode(toDeleteElement.parent);
+      if (!parentNode) {
+        throw new ReferenceError('Parent of node to delete not found');
+      }
+      const updatedParent = treeNodeReducer(parentNode, {
+        __typename: 'RemoveNodeFromLinkField',
+        childNodeId: elementId,
+        parentField: toDeleteElement.parent.parentField
+      });
+      this._currentNodes.set(iidToStr(updatedParent), updatedParent);
+    }
+    const elementsToDelete: ElementId<keyof NodesDef>[] = [];
+    visitDocument(
+      this,
+      (_, nodeType, nodeId) => {
+        elementsToDelete.push({__typename: nodeType, _id: nodeId});
+      },
+      {
+        traversal: DocumentVisitTraversal.DEPTH_FIRST,
+        startElement: toDeleteElement
+      }
+    );
+    for (const elementToDeleteId of elementsToDelete) {
+      const strId = iidToStr(elementToDeleteId);
+      if (this._currentNodes.has(strId)) {
+        this._currentNodes.delete(strId);
+      }
+    }
+    this.changes.push({
+      ...(isElementId(deleteCommand.element)
+        ? deleteCommand
+        : {
+            ...deleteCommand,
+            element: extractElementId(elementId)
+          }),
+      __typename: HDocCommandType.DELETE_ELEMENT
+    });
+  }
 
   public changeElement<TargetType extends keyof NodesDef>(
     changeCommand: ChangeElement<NodesDef, TargetType>
@@ -192,10 +231,7 @@ class MutableDocumentImpl<
         ? changeCommand
         : {
             ...changeCommand,
-            element: {
-              __typename,
-              _id
-            }
+            element: extractElementId(elementId)
           }
     );
   }
@@ -205,15 +241,22 @@ class MutableDocumentImpl<
     ParentTypename extends keyof NodesDef
   >(moveCommand: MoveElement<NodesDef, TargetTypename, ParentTypename>) {}
 
-  applyChanges(
+  applyChanges<
+    TargetType extends keyof NodesDef,
+    ParentType extends keyof NodesDef
+  >(
     changes:
-      | HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>
-      | Array<HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>>
+      | HDocOperation<NodesDef, TargetType, ParentType>
+      | Array<HDocOperation<NodesDef, TargetType, ParentType>>
   ) {
     const arrChanges = Array.isArray(changes) ? changes : [changes];
     for (const change of arrChanges) {
       if (change.__typename === HDocCommandType.INSERT_ELEMENT) {
         this.insertElement(change);
+      } else if (change.__typename === HDocCommandType.CHANGE_ELEMENT) {
+        this.changeElement(change);
+      } else if (change.__typename === HDocCommandType.DELETE_ELEMENT) {
+        this.deleteElement(change);
       }
     }
   }
@@ -720,12 +763,14 @@ export const docReducer = <
     keyof NodesDef,
     TreeNode<NodesDef, keyof NodesDef, any, any, any>
   >,
-  R extends keyof NodesDef = keyof NodesDef
+  R extends keyof NodesDef,
+  TargetType extends keyof NodesDef,
+  ParentType extends keyof NodesDef
 >(
   doc: NormalizedDocument<NodesDef, R>,
   cmd:
-    | HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>
-    | Array<HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>>
+    | HDocOperation<NodesDef, TargetType, ParentType>
+    | Array<HDocOperation<NodesDef, TargetType, ParentType>>
 ): NormalizedDocument<NodesDef, R> => {
   const cmds = Array.isArray(cmd) ? cmd : [cmd];
   if (cmds.length < 1) return doc;
@@ -772,7 +817,6 @@ export const removeElementFromArrayReducer = <
           [arrayFieldName]: updatedArray
         }
       };
-      // @ts-expect-error Cannot uplift TargetType to keyof NodesDef
       return docReducer(doc, updateChange);
     }
   }
@@ -835,7 +879,6 @@ export const addElementToArrayReducer = <
         [arrayFieldName]: updatedArray
       }
     };
-    // @ts-expect-error Cannot uplift TargetType to keyof NodesDef
     return docReducer(doc, updateChange);
   }
   return doc;

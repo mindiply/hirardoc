@@ -2,16 +2,16 @@ import {
   creationDate,
   emptyTestDocument,
   ITestDocElementsMap,
-  removeParents,
   testDocSchema
 } from './testTypes';
 import {
+  compactTreeNode,
   createNormalizedDocument,
   denormalizeDocument,
+  docReducer,
   HDocCommandType,
   InsertElement,
-  mutableDocument,
-  NodeDataOfTreeNode
+  mutableDocument
 } from '../src';
 
 describe('Empty doc and nodes', () => {
@@ -90,6 +90,45 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
       expectedRootNode
     );
+  });
+
+  test('Change a node', () => {
+    let doc = emptyTestDocument();
+    doc = docReducer(doc, {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'children', index: 0},
+      parent: [],
+      element: {
+        __typename: 'Node',
+        _id: 'Node1',
+        isChecked: false,
+        text: 'firstNode',
+        membersIds: []
+      }
+    });
+    doc = docReducer(doc, {
+      __typename: HDocCommandType.CHANGE_ELEMENT,
+      element: {
+        __typename: 'Node',
+        _id: 'Node1'
+      },
+      changes: {
+        __typename: 'Node',
+        text: 'Changed node',
+        isChecked: true,
+        membersIds: ['Member1']
+      }
+    });
+    expect(
+      compactTreeNode(doc.getNode({__typename: 'Node', _id: 'Node1'})!)
+    ).toMatchObject({
+      _id: 'Node1',
+      __typename: 'Node',
+      text: 'Changed node',
+      isChecked: true,
+      membersIds: ['Member1'],
+      children: []
+    });
   });
 });
 //   test('The empty document', () => {

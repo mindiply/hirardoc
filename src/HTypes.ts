@@ -397,10 +397,13 @@ export interface ReplayChangesDocument<
    *
    * @param {HDocOperation<ITimelineBar | ITimelineBarRow | IRootContext, ITimelineEntitiesMaps> | Array<HDocOperation<ITimelineBar | ITimelineBarRow | IRootContext, ITimelineEntitiesMaps>>} changes
    */
-  applyChanges: (
+  applyChanges: <
+    TargetType extends keyof NodesDef,
+    ParentType extends keyof NodesDef
+  >(
     changes:
-      | HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>
-      | Array<HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>>
+      | HDocOperation<NodesDef, TargetType, ParentType>
+      | Array<HDocOperation<NodesDef, TargetType, ParentType>>
   ) => void;
 }
 
@@ -1120,10 +1123,7 @@ export interface VisitDocumentOptions<
    * If set, visit only the subtree rooted at the element with the give
    * type and id
    */
-  startElement?: {
-    type: U;
-    _id: Id;
-  };
+  startElement?: ElementId<U>;
 
   /**
    * Whitelist of node types the visit function will be called on.
