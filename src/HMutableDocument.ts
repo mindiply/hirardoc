@@ -217,34 +217,40 @@ class MutableDocumentImpl<
   }
 
   public changeElement<TargetType extends keyof NodesDef>(
-    changeCommand: ChangeElement<NodesDef, TargetType>
+    inpChangeCommand: Omit<ChangeElement<NodesDef, TargetType>, '__typename'>
   ) {
-    const {element} = changeCommand;
-    const elementId = isElementId(element)
-      ? element
-      : this.idAndTypeForPath(element);
+    const {element} = inpChangeCommand;
+    const elementId = (
+      isElementId(element) ? element : this.idAndTypeForPath(element)
+    ) as ElementId<TargetType>;
     const existingElement = this.getNode(elementId);
     if (!existingElement) {
       throw new ReferenceError('Node to change not found');
     }
-    // @ts-expect-error Uplift od change command to keyof NodesDef
-    const updatedNode = treeNodeReducer(existingElement, changeCommand);
+    const updateCmd: ChangeElement<NodesDef, TargetType> = {
+      __typename: HDocCommandType.CHANGE_ELEMENT,
+      ...(isElementId(element)
+        ? inpChangeCommand
+        : {
+            ...inpChangeCommand,
+            element: extractElementId(elementId)
+          })
+    };
+    const updatedNode = treeNodeReducer(existingElement, updateCmd);
     if (updatedNode === existingElement) return;
     this._currentNodes.set(iidToStr(updatedNode), updatedNode);
-    this.changes.push(
-      isElementId(element)
-        ? changeCommand
-        : {
-            ...changeCommand,
-            element: extractElementId(elementId)
-          }
-    );
+    this.changes.push(updateCmd);
   }
 
   public moveElement<
     TargetTypename extends keyof NodesDef,
     ParentTypename extends keyof NodesDef
-  >(moveCommand: MoveElement<NodesDef, TargetTypename, ParentTypename>) {
+  >(
+    moveCommand: Omit<
+      MoveElement<NodesDef, TargetTypename, ParentTypename>,
+      '__typename'
+    >
+  ) {
     const {changes, element, toParent, toPosition} = moveCommand;
     // 1. Find the element
     const elementId = isElementId(element)
@@ -272,7 +278,7 @@ class MutableDocumentImpl<
       const updatedOriginalParent = treeNodeReducer(originalParent, {
         __typename: 'RemoveNodeFromLinkField',
         parentField: elementToMove.parent.parentField,
-        childNodeId: elementToMove.parent
+        childNodeId: elementToMove
       });
       if (updatedOriginalParent !== originalParent) {
         this._currentNodes.set(
@@ -313,15 +319,16 @@ class MutableDocumentImpl<
       }
     }
 
-    this.changes.push(
-      isElementId(moveCommand.element) && isElementId(moveCommand.toParent)
+    this.changes.push({
+      __typename: HDocCommandType.MOVE_ELEMENT,
+      ...(isElementId(moveCommand.element) && isElementId(moveCommand.toParent)
         ? moveCommand
         : {
             ...moveCommand,
             element: extractElementId(elementId),
             toParent: extractElementId(targetParent)
-          }
-    );
+          })
+    });
   }
 
   applyChanges<
@@ -340,6 +347,10 @@ class MutableDocumentImpl<
         this.changeElement(change);
       } else if (change.__typename === HDocCommandType.DELETE_ELEMENT) {
         this.deleteElement(change);
+      } else if (change.__typename === HDocCommandType.MOVE_ELEMENT) {
+        this.moveElement(change);
+      } else {
+        throw new TypeError('Unknown change type');
       }
     }
   }

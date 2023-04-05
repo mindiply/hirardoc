@@ -315,7 +315,9 @@ export interface MoveElement<
   element: Path<NodesDef> | ElementId<TargetTypename>;
   toParent: Path<NodesDef> | ElementId<ParentTypename>;
   toPosition: PathElement<NodesDef, ParentTypename>;
-  changes?: Partial<NodeDataOfTreeNode<NodesDef, TargetTypename>>;
+  changes?: {__typename: TargetTypename} & Partial<
+    NodeDataOfTreeNode<NodesDef, TargetTypename>
+  >;
 }
 
 export type HDocOperation<
@@ -456,7 +458,7 @@ export interface MutableDocument<
    * @param {ChangeElement<ElementType, Doc, U>} changeCommand
    */
   changeElement: <TargetType extends keyof NodesDef>(
-    changeCommand: ChangeElement<NodesDef, TargetType>
+    changeCommand: Omit<ChangeElement<NodesDef, TargetType>, '__typename'>
   ) => void;
 
   /**
@@ -469,7 +471,10 @@ export interface MutableDocument<
     TargetTypename extends keyof NodesDef,
     ParentTypename extends keyof NodesDef
   >(
-    moveCommand: MoveElement<NodesDef, TargetTypename, ParentTypename>
+    moveCommand: Omit<
+      MoveElement<NodesDef, TargetTypename, ParentTypename>,
+      '__typename'
+    >
   ) => void;
 }
 

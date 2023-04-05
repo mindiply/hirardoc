@@ -3,12 +3,10 @@ import {
   Id,
   ElementId,
   NormalizedDocument,
-  NodesDefOfDoc,
   ArrayPathElement,
   SetPathElement,
   DocumentSchema,
-  TreeNode,
-  IId
+  TreeNode
 } from './HTypes';
 
 export function isId(obj: any): obj is Id {
@@ -52,9 +50,15 @@ export function isNullableId(obj: any): obj is Id | null {
  * @param {Id} elementId
  * @returns {boolean}
  */
-export function hasMappedElement<NorDoc extends NormalizedDocument<any, any>>(
-  docOrMaps: NorDoc,
-  elementType: keyof NodesDefOfDoc<NorDoc>,
+export function hasMappedElement<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef
+>(
+  docOrMaps: NormalizedDocument<NodesDef, R>,
+  elementType: keyof NodesDef,
   elementId: Id
 ): boolean {
   return docOrMaps.getNode({_id: elementId, __typename: elementType}) !== null;
