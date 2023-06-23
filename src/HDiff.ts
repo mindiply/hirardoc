@@ -1,5 +1,4 @@
 import {
-  AllMappedTypesFields,
   ArrayChange,
   ArrayKeepElement,
   DiffArrayResult,
@@ -11,21 +10,22 @@ import {
   Id,
   DeleteElement,
   DocumentSchema,
-  IFieldEntityReference,
   InsertElement,
   MoveElement,
   NormalizedDocument,
-  INormalizedMutableMapsDocument,
-  IParentedId,
-  MappedParentedTypesFields,
-  MapsOfNormDoc,
-  UOfNormDoc,
-  WasTouchedFn
+  WasTouchedFn,
+  TreeNode,
+  NodeDataOfTreeNode,
+  LinkType,
+  ElementId,
+  NodeLink,
+  AllChildrenFields
 } from './HTypes';
-import {mutableDocument, pathForElementWithId} from './HDocument';
+import {pathForElementWithId} from './HDocument';
+import {mutableDocument} from './HMutableDocument';
 import {isEqual, omit} from 'lodash';
 import {visitDocument} from './HVisit';
-import {assert, hasMappedElement, isParentedId, mappedElement} from './HUtils';
+import {assert, hasMappedElement, mappedElement} from './HUtils';
 import {defaultWasTouchedFn} from './bufferDiff3';
 
 /**
@@ -38,10 +38,16 @@ import {defaultWasTouchedFn} from './bufferDiff3';
  * @param {NormalizedDocument<MapsInterface, U>} laterDoc
  * @returns {HDocOperation<MapsInterface, any, U>[]}
  */
-export function diff<NorDoc extends NormalizedDocument<any, any>>(
-  baseDoc: NorDoc,
-  laterDoc: NorDoc
-): HDocOperation<MapsOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>, any>[] {
+export function diff<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef
+>(
+  baseDoc: NormalizedDocument<NodesDef, R>,
+  laterDoc: NormalizedDocument<NodesDef, R>
+): HDocOperation<NodesDef, keyof NodesDef, keyof NodesDef>[] {
   /**
    * We visit laterDoc breadth first, and for each element visited
    * we ensure that the info is up to date and that the children
@@ -58,8 +64,8 @@ export function diff<NorDoc extends NormalizedDocument<any, any>>(
   if (
     !(
       baseDoc.schema === laterDoc.schema &&
-      baseDoc.rootType === laterDoc.rootType &&
-      baseDoc.rootId === laterDoc.rootId
+      baseDoc.rootId.__typename === laterDoc.rootId.__typename &&
+      baseDoc.rootId._id === laterDoc.rootId._id
     )
   ) {
     return [];
@@ -68,155 +74,118 @@ export function diff<NorDoc extends NormalizedDocument<any, any>>(
   visitDocument(
     laterDoc,
     (doc, nodeType, nodeId) => {
-      const destElement = mappedElement(laterDoc.maps, nodeType, nodeId);
-      let mutableElement = mappedElement(mutableDoc.maps, nodeType, nodeId);
-      if (!isParentedId(destElement) || !isParentedId(mutableElement)) {
-        throw new ReferenceError(`Node ${nodeType}:${nodeId} not found`);
-      }
+      const destElement = mappedElement(laterDoc, nodeType, nodeId);
+      let mutableElement = mappedElement(mutableDoc, nodeType, nodeId);
 
       // 1. If we are an existing node, check if the info fields should be
       // updated
       const nodePath = pathForElementWithId(mutableDoc, nodeType, nodeId);
-      if (hasMappedElement(baseDoc.maps, nodeType, nodeId)) {
-        const infoChanges = diffInfoOf<
-          MapsOfNormDoc<NorDoc>,
-          UOfNormDoc<NorDoc>,
-          MappedParentedTypesFields<MappedParentedTypesFields<NorDoc>>
-        >(mutableDoc, laterDoc, nodeType, nodeId);
+      if (hasMappedElement(baseDoc, nodeType, nodeId)) {
+        const infoChanges = diffInfoOf(mutableDoc, laterDoc, nodeType, nodeId);
         if (Object.keys(infoChanges).length > 0) {
-          const changeElementCmd: ChangeElement<
-            MapsOfNormDoc<NorDoc>,
-            UOfNormDoc<NorDoc>,
-            IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
-          > = {
-            __typename: HDocCommandType.CHANGE_ELEMENT,
+          mutableDoc.changeElement({
             element: nodePath,
             changes: {__typename: destElement.__typename, ...infoChanges}
-          };
-          mutableDoc.changeElement(changeElementCmd);
+          });
         }
       }
 
       // 2. Iterate across the children
       const {schema} = doc;
-      for (const linkFieldName in schema.types[nodeType]) {
-        if (linkFieldName === 'parentId') continue;
-        const fieldLink = schema.types[nodeType][linkFieldName] as
-          | IFieldEntityReference<UOfNormDoc<NorDoc>>
-          | [IFieldEntityReference<UOfNormDoc<NorDoc>>];
-        if (Array.isArray(fieldLink)) {
-          const {__schemaType: childType} = fieldLink[0];
-          const destChildrenIds: Id[] = (destElement as any)[linkFieldName];
+      const nodeChildren = schema.nodeTypes[nodeType].children;
+      for (const linkFieldName in nodeChildren) {
+        const linkType = nodeChildren[linkFieldName];
+        const recordLinkField = destElement.children[linkFieldName] as NodeLink<
+          keyof NodesDef
+        >;
+        if (!recordLinkField) {
+          continue;
+        }
+        if (linkType === LinkType.array) {
+          if (!Array.isArray(recordLinkField)) {
+            throw new TypeError('Expected array of links.');
+          }
+          const destChildrenIds: ElementId<keyof NodesDef>[] = recordLinkField;
           for (let i = 0; i < destChildrenIds.length; i++) {
-            const destChildId = destChildrenIds[i];
+            const destChildElId = destChildrenIds[i];
             // Every iteration of dest child, there is a chance that the mutable
             // element has changed, so I need to refresh to the latest reference
-            mutableElement = mappedElement(mutableDoc.maps, nodeType, nodeId);
-            const mutableChildrenIds: Id[] = (mutableElement as any)[
-              linkFieldName
-            ];
+            mutableElement = mappedElement(mutableDoc, nodeType, nodeId);
+            const mutableChildrenIds: ElementId<keyof NodesDef>[] =
+              mutableElement.children[linkFieldName];
             const mutableChildId =
               i < mutableChildrenIds.length ? mutableChildrenIds[i] : null;
             const destChild = mappedElement(
-              laterDoc.maps,
-              childType,
-              destChildId
+              laterDoc,
+              destChildElId.__typename,
+              destChildElId._id
             );
-            if (!isParentedId(destChild)) {
-              throw new ReferenceError(
-                `Child node ${childType}:${destChildId} not found`
-              );
-            }
 
-            if (destChildId !== mutableChildId) {
+            if (destChildElId !== mutableChildId) {
               // No else branch needed, the position is the same and the visit to the child node
-              // will take care of the potential differences int he data within the child node
-              if (hasMappedElement(mutableDoc.maps, childType, destChildId)) {
+              // will take care of the potential differences in the data within the child node
+              if (
+                hasMappedElement(
+                  mutableDoc,
+                  destChildElId.__typename,
+                  destChildElId._id
+                )
+              ) {
                 // Node exists in the document, move it from there
                 const childInfoDiff = diffInfoOf(
                   mutableDoc,
                   laterDoc,
-                  childType,
-                  destChildId
+                  destChildElId.__typename,
+                  destChildElId._id
                 );
-                const moveChildCmd: MoveElement<
-                  MapsOfNormDoc<NorDoc>,
-                  UOfNormDoc<NorDoc>,
-                  IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
-                > = {
-                  __typename: HDocCommandType.MOVE_ELEMENT,
+                mutableDoc.moveElement({
                   element: pathForElementWithId(
                     mutableDoc,
-                    childType,
-                    destChildId
+                    destChildElId.__typename,
+                    destChildElId._id
                   ),
                   toParent: pathForElementWithId(mutableDoc, nodeType, nodeId),
-                  toPosition: [
-                    linkFieldName as any as AllMappedTypesFields<
-                      MapsOfNormDoc<NorDoc>
+                  toPosition: {
+                    field: linkFieldName as AllChildrenFields<
+                      NodesDef[keyof NodesDef]
                     >,
-                    i
-                  ],
+                    index: i
+                  },
                   changes:
                     Object.keys(childInfoDiff).length > 0
-                      ? {
-                          __typename: destChild.__typename,
-                          ...omit(childInfoDiff, '__typename')
-                        }
+                      ? Object.assign(childInfoDiff, {
+                          __typename: destChild.__typename
+                        })
                       : undefined
-                };
-                mutableDoc.moveElement(moveChildCmd);
+                });
               } else {
                 // New element, let's add the basic info from it,
                 // emptying children links
-                const elementInfo = {...(destChild as IParentedId)};
-                for (const childLinkFieldName in schema.types[childType]) {
-                  if (childLinkFieldName === 'parentId') continue;
-                  const childFieldLink =
-                    schema.types[childType][childLinkFieldName];
-                  (elementInfo as any)[childLinkFieldName] = Array.isArray(
-                    childFieldLink
-                  )
-                    ? []
-                    : null;
-                }
-                const addChildCmd: InsertElement<
-                  MapsOfNormDoc<NorDoc>,
-                  UOfNormDoc<NorDoc>,
-                  IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
-                > = {
-                  __typename: HDocCommandType.INSERT_ELEMENT,
+                const elementInfo = Object.assign({}, destChild);
+                mutableDoc.insertElement({
                   parent: nodePath,
-                  position: [
-                    linkFieldName as any as AllMappedTypesFields<
-                      MapsOfNormDoc<NorDoc>
+                  position: {
+                    field: linkFieldName as AllChildrenFields<
+                      NodesDef[keyof NodesDef]
                     >,
-                    i
-                  ],
+                    index: i
+                  },
                   element: elementInfo
-                };
-                mutableDoc.insertElement(addChildCmd);
+                });
               }
             }
           }
-        } else {
+        } else if (linkType === LinkType.single) {
           if (
-            (destElement as any)[linkFieldName] !==
-            (mutableElement as any)[linkFieldName]
+            destElement.children[linkFieldName] !==
+            mutableElement.children[linkFieldName]
           ) {
-            const changeLinkFieldCmd: ChangeElement<
-              MapsOfNormDoc<NorDoc>,
-              UOfNormDoc<NorDoc>,
-              IParentedId<UOfNormDoc<NorDoc>, UOfNormDoc<NorDoc>>
-            > = {
-              __typename: HDocCommandType.CHANGE_ELEMENT,
+            mutableDoc.changeElement({
               element: pathForElementWithId(mutableDoc, nodeType, nodeId),
               changes: {
-                __typename: destElement.__typename,
+              __typename: destElement.__typename,
                 [linkFieldName]: (destElement as any)[linkFieldName]
-              }
-            };
-            mutableDoc.changeElement(changeLinkFieldCmd);
+            });
           }
         }
       }
@@ -230,15 +199,10 @@ export function diff<NorDoc extends NormalizedDocument<any, any>>(
   visitDocument(
     mutableDoc,
     (doc, nodeType, nodeId) => {
-      if (!hasMappedElement(laterDoc.maps, nodeType, nodeId)) {
-        const deleteElementCmd: DeleteElement<
-          MapsOfNormDoc<NorDoc>,
-          UOfNormDoc<NorDoc>
-        > = {
-          __typename: HDocCommandType.DELETE_ELEMENT,
-          element: pathForElementWithId(doc, nodeType, nodeId)
-        };
-        mutableDoc.deleteElement(deleteElementCmd);
+      if (!hasMappedElement(laterDoc, nodeType, nodeId)) {
+        mutableDoc.deleteElement({
+          element: {__typename: nodeType, _id: nodeId}
+        });
       }
     },
     {
@@ -262,66 +226,62 @@ export function diff<NorDoc extends NormalizedDocument<any, any>>(
  * @returns {Partial<T>}
  */
 export function diffElementInfo<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  T extends IParentedId<U, U>
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef,
+  T extends keyof NodesDef
 >(
-  schema: DocumentSchema<MapsInterface, U>,
-  elementType: U,
-  baseEl: T,
-  laterEl: T
-): Partial<T> {
-  const infoDiff: Partial<T> = {};
-  const elementLinkedFields = schema.types[elementType] || {};
+  schema: DocumentSchema<NodesDef, R>,
+  elementType: T,
+  baseEl: NodesDef[T],
+  laterEl: NodesDef[T]
+): Partial<NodeDataOfTreeNode<NodesDef, T>> {
+  const infoDiff: Partial<NodeDataOfTreeNode<NodesDef, T>> = {};
   const fieldsChecked: Set<string> = new Set();
-  for (const fieldName in baseEl) {
-    if (fieldName === 'parentId' || fieldName in elementLinkedFields) {
-      continue;
-    }
+  for (const fieldName in baseEl.data) {
     fieldsChecked.add(fieldName);
-    const baseVal = (baseEl as any)[fieldName];
-    const laterVal = (laterEl as any)[fieldName];
+    const baseVal = baseEl.data[fieldName];
+    const laterVal = laterEl.data[fieldName];
     if (!isEqual(baseVal, laterVal)) {
-      infoDiff[fieldName] = laterVal;
+      infoDiff[fieldName as keyof NodeDataOfTreeNode<NodesDef, T>] = laterVal;
     }
   }
   for (const fieldName in laterEl) {
-    if (
-      fieldName === 'parentId' ||
-      fieldName in elementLinkedFields ||
-      fieldsChecked.has(fieldName)
-    ) {
+    if (fieldsChecked.has(fieldName)) {
       continue;
     }
     // If the field is not in the set of checked fields,
     // it was undefined in base but is defined in later
-    infoDiff[fieldName] = (laterEl as any)[fieldName];
+    infoDiff[fieldName as keyof NodeDataOfTreeNode<NodesDef, T>] = (
+      laterEl as any
+    )[fieldName];
   }
   return infoDiff;
 }
 
 export function diffInfoOf<
-  MapsInterface,
-  U extends keyof MapsInterface,
-  T extends MappedParentedTypesFields<MapsInterface>
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  R extends keyof NodesDef,
+  T extends keyof NodesDef
 >(
-  baseDoc:
-    | NormalizedDocument<MapsInterface, U>
-    | INormalizedMutableMapsDocument<MapsInterface, U>,
-  laterDoc:
-    | NormalizedDocument<MapsInterface, U>
-    | INormalizedMutableMapsDocument<MapsInterface, U>,
-  elementType: U,
+  baseDoc: NormalizedDocument<NodesDef, R>,
+  laterDoc: NormalizedDocument<NodesDef, R>,
+  elementType: T,
   elementId: Id
-): Partial<T> {
+): Partial<NodeDataOfTreeNode<NodesDef, T>> {
   if (
-    !hasMappedElement(baseDoc.maps, elementType, elementId) ||
-    !hasMappedElement(laterDoc.maps, elementType, elementId)
+    !hasMappedElement(baseDoc, elementType, elementId) ||
+    !hasMappedElement(laterDoc, elementType, elementId)
   ) {
     return {};
   }
-  const baseEl = mappedElement(baseDoc.maps, elementType, elementId) as T;
-  const laterEl = mappedElement(laterDoc.maps, elementType, elementId) as T;
+  const baseEl = mappedElement(baseDoc, elementType, elementId);
+  const laterEl = mappedElement(laterDoc, elementType, elementId);
   return diffElementInfo(baseDoc.schema, elementType, baseEl, laterEl);
 }
 
