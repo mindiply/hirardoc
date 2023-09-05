@@ -25,7 +25,13 @@ import {pathForElementWithId} from './HDocument';
 import {mutableDocument} from './HMutableDocument';
 import {isEqual, omit} from 'lodash';
 import {visitDocument} from './HVisit';
-import {assert, hasMappedElement, mappedElement} from './HUtils';
+import {
+  assert,
+  elementIdsEquals,
+  hasMappedElement,
+  isElementId,
+  mappedElement
+} from './HUtils';
 import {defaultWasTouchedFn} from './bufferDiff3';
 
 /**
@@ -92,16 +98,16 @@ export function diff<
 
       // 2. Iterate across the children
       const {schema} = doc;
-      const nodeChildren = schema.nodeTypes[nodeType].children;
-      for (const linkFieldName in nodeChildren) {
-        const linkType = nodeChildren[linkFieldName];
+      const schemaChildren = schema.nodeTypes[nodeType].children;
+      for (const linkFieldName in schemaChildren) {
+        const schemaLinkType = schemaChildren[linkFieldName];
         const recordLinkField = destElement.children[linkFieldName] as NodeLink<
           keyof NodesDef
         >;
-        if (!recordLinkField) {
-          continue;
+        if (schemaLinkType !== LinkType.single && !recordLinkField) {
+          throw new TypeError('Null value for array or set fields');
         }
-        if (linkType === LinkType.array) {
+        if (schemaLinkType === LinkType.array) {
           if (!Array.isArray(recordLinkField)) {
             throw new TypeError('Expected array of links.');
           }
@@ -113,6 +119,9 @@ export function diff<
             mutableElement = mappedElement(mutableDoc, nodeType, nodeId);
             const mutableChildrenIds: ElementId<keyof NodesDef>[] =
               mutableElement.children[linkFieldName];
+            if (!Array.isArray(mutableChildrenIds)) {
+              throw new TypeError('Expected array of link ids');
+            }
             const mutableChildId =
               i < mutableChildrenIds.length ? mutableChildrenIds[i] : null;
             const destChild = mappedElement(
@@ -121,7 +130,12 @@ export function diff<
               destChildElId._id
             );
 
-            if (destChildElId !== mutableChildId) {
+            if (
+              !(
+                mutableChildId &&
+                elementIdsEquals(destChildElId, mutableChildId)
+              )
+            ) {
               // No else branch needed, the position is the same and the visit to the child node
               // will take care of the potential differences in the data within the child node
               if (
@@ -161,7 +175,7 @@ export function diff<
               } else {
                 // New element, let's add the basic info from it,
                 // emptying children links
-                const elementInfo = Object.assign({}, destChild);
+                const elementInfo = Object.assign({}, destChild.data);
                 mutableDoc.insertElement({
                   parent: nodePath,
                   position: {
@@ -175,17 +189,157 @@ export function diff<
               }
             }
           }
-        } else if (linkType === LinkType.single) {
-          if (
-            destElement.children[linkFieldName] !==
-            mutableElement.children[linkFieldName]
+        } else if (schemaLinkType === LinkType.single) {
+          if (!isElementId(recordLinkField)) {
+            if (mutableElement.children[linkFieldName]) {
+              mutableDoc.changeElement({
+                element: pathForElementWithId(mutableDoc, nodeType, nodeId),
+                // @ts-expect-error unable to extract type for changes
+                changes: {
+                  __typename: destElement.__typename,
+                  [linkFieldName]: null
+                }
+              });
+            } else {
+              // No change, null both originally and now
+              continue;
+            }
+          } else if (
+            !elementIdsEquals(
+              recordLinkField,
+              mutableElement.children[linkFieldName]
+            )
           ) {
-            mutableDoc.changeElement({
-              element: pathForElementWithId(mutableDoc, nodeType, nodeId),
-              changes: {
-              __typename: destElement.__typename,
-                [linkFieldName]: (destElement as any)[linkFieldName]
-            });
+            if (
+              !hasMappedElement(
+                baseDoc,
+                recordLinkField.__typename,
+                recordLinkField._id
+              )
+            ) {
+              mutableDoc.insertElement({
+                parent: nodePath,
+                position: linkFieldName as AllChildrenFields<
+                  NodesDef[keyof NodesDef]
+                >,
+                element: Object.assign(
+                  {},
+                  mappedElement(
+                    laterDoc,
+                    recordLinkField.__typename,
+                    recordLinkField._id
+                  ).data
+                )
+              });
+            } else {
+              const childInfoDiff = diffInfoOf(
+                mutableDoc,
+                laterDoc,
+                recordLinkField.__typename,
+                recordLinkField._id
+              );
+              mutableDoc.moveElement({
+                element: {
+                  __typename: recordLinkField.__typename,
+                  _id: recordLinkField._id
+                },
+                toParent: {__typename: nodeType, _id: nodeId},
+                toPosition: linkFieldName as AllChildrenFields<
+                  NodesDef[keyof NodesDef]
+                >,
+                // @ts-expect-error unable to extract type for changes
+                changes:
+                  Object.keys(childInfoDiff).length > 0
+                    ? childInfoDiff
+                    : undefined
+              });
+            }
+          }
+        } else if (schemaLinkType === LinkType.set) {
+          if (!(recordLinkField instanceof Map)) {
+            throw new TypeError('Expected a map of link ids');
+          }
+          // @ts-expect-error Unable to extract map type
+          const originalMap: Map<
+            string,
+            ElementId<keyof NodesDef>
+          > = hasMappedElement(baseDoc, nodeType, nodeId)
+            ? (
+                mappedElement(
+                  baseDoc,
+                  nodeType,
+                  nodeId
+                ) as NodesDef[keyof NodesDef]
+              )[linkFieldName as keyof NodesDef[keyof NodesDef]]
+            : new Map();
+          if (!(originalMap instanceof Map)) {
+            throw new TypeError('The original node is not a map of elementIds');
+          }
+          for (const [
+            elementStrId,
+            childElementId
+          ] of recordLinkField.entries()) {
+            if (!originalMap.has(elementStrId)) {
+              // We have a new element in the map, need to work out if it was moved or
+              // inserted as a new node
+              if (
+                hasMappedElement(
+                  baseDoc,
+                  childElementId.__typename,
+                  childElementId._id
+                )
+              ) {
+                const childInfoDiff = diffInfoOf(
+                  mutableDoc,
+                  laterDoc,
+                  childElementId.__typename,
+                  childElementId._id
+                );
+                mutableDoc.moveElement({
+                  toParent: nodePath,
+                  toPosition: {
+                    field: linkFieldName as AllChildrenFields<
+                      NodesDef[keyof NodesDef]
+                    >,
+                    nodeType: childElementId.__typename,
+                    nodeId: childElementId._id
+                  },
+                  element: {
+                    __typename: childElementId.__typename,
+                    _id: childElementId._id
+                  },
+                  changes:
+                    Object.keys(childInfoDiff).length > 0
+                      ? childInfoDiff
+                      : undefined
+                });
+              } else {
+                mutableDoc.insertElement({
+                  parent: nodePath,
+                  position: {
+                    field: linkFieldName as AllChildrenFields<
+                      NodesDef[keyof NodesDef]
+                    >,
+                    nodeType: childElementId.__typename,
+                    nodeId: childElementId._id
+                  },
+                  element: mappedElement(
+                    laterDoc,
+                    childElementId.__typename,
+                    childElementId._id
+                  ).data
+                });
+              }
+            } else {
+              // The element was already in, we're fine
+            }
+          }
+          const mutableChildrenMap: Map<
+            string,
+            ElementId<keyof NodesDef>
+          > = mutableElement.children[linkFieldName];
+          if (!(mutableChildrenMap instanceof Map)) {
+            throw new TypeError('Expected a map of link ids');
           }
         }
       }

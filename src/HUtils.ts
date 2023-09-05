@@ -8,6 +8,7 @@ import {
   DocumentSchema,
   TreeNode
 } from './HTypes';
+import {isElement} from 'lodash';
 
 export function isId(obj: any): obj is Id {
   return typeof obj === 'number' || (obj !== '' && typeof obj === 'string');
@@ -34,7 +35,12 @@ export function elementIdsEquals(
   el1: ElementId<any>,
   el2: ElementId<any>
 ): boolean {
-  return el1.__typename === el2.__typename && el1._id === el2._id;
+  return (
+    isElementId(el1) &&
+    isElementId(el2) &&
+    el1.__typename === el2.__typename &&
+    el1._id === el2._id
+  );
 }
 
 export function isNullableId(obj: any): obj is Id | null {
