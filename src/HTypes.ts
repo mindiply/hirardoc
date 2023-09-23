@@ -396,7 +396,7 @@ export interface ReplayChangesDocument<
    *
    * @returns {NormalizedDocument<Doc, K, U>}
    */
-  readonly updatedDocument: NormalizedDocument<NodesDef, R>;
+  readonly updatedDocument: () => NormalizedDocument<NodesDef, R>;
 
   /**
    * List of the commands operated on this mutable document since

@@ -60,7 +60,7 @@ class MutableDocumentImpl<
     return this._originalDoc;
   }
 
-  public get updatedDocument() {
+  public updatedDocument() {
     return this._currentNodes.hasChanged()
       ? new NormalizedDocumentImpl(this as NormalizedDocument<NodesDef, R>)
       : this.originalDocument;
@@ -265,10 +265,6 @@ class MutableDocumentImpl<
     const targetParentElId = isElementId(toParent)
       ? toParent
       : this.idAndTypeForPath(toParent);
-    const targetParent = this.getNode(targetParentElId);
-    if (!targetParent) {
-      throw new ReferenceError('New target parent not found');
-    }
 
     // 3. If there is an original parent, remove the reference to the element being moved
     if (elementToMove.parent && originalParent) {
@@ -283,6 +279,12 @@ class MutableDocumentImpl<
           updatedOriginalParent
         );
       }
+    }
+    // Important to get the target parent here, because it may also be the original parent, if it's the same
+    // field or a different field we are moving to
+    const targetParent = this.getNode(targetParentElId);
+    if (!targetParent) {
+      throw new ReferenceError('New target parent not found');
     }
 
     const targetPlace = fieldAndIndexOfPosition(
@@ -304,16 +306,24 @@ class MutableDocumentImpl<
         updatedTargetParent
       );
     }
+    let updatedMovedNode = treeNodeReducer(elementToMove, {
+      __typename: 'UpdateParentField',
+      parentLink: {
+        __typename: updatedTargetParent.__typename,
+        _id: updatedTargetParent._id,
+        parentField: targetPlace.field
+      }
+    });
 
     // 5. If there are changes to the node being moved, apply them
     if (changes) {
-      const updatedMovedNode = treeNodeReducer(elementToMove, {
+      updatedMovedNode = treeNodeReducer(updatedMovedNode, {
         __typename: HDocCommandType.CHANGE_ELEMENT,
         changes: changes
       });
-      if (updatedMovedNode !== elementToMove) {
-        this._currentNodes.set(iidToStr(updatedMovedNode), updatedMovedNode);
-      }
+    }
+    if (updatedMovedNode !== elementToMove) {
+      this._currentNodes.set(iidToStr(updatedMovedNode), updatedMovedNode);
     }
 
     this.changes.push({
@@ -385,7 +395,7 @@ export const docReducer = <
   } catch (err) {
     // silently eaten
   }
-  return mutableDoc.updatedDocument;
+  return mutableDoc.updatedDocument();
 };
 
 export const removeElementFromArrayReducer = <

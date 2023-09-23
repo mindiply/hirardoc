@@ -26,6 +26,7 @@ export function isElementId<TypeName = any>(
 ): obj is ElementId<TypeName> {
   return (
     typeof obj === 'object' &&
+    obj &&
     isId(obj._id) &&
     typeof obj.__typename === 'string'
   );

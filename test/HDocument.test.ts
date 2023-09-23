@@ -86,7 +86,7 @@ describe('Test the basic operations', () => {
     };
     const mutableDoc = mutableDocument(emptyDoc);
     mutableDoc.insertElement(addNodeCmd);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
@@ -96,9 +96,77 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
+  });
+
+  test('Add two nodes - unshift style', () => {
+    const emptyDoc = emptyTestDocument();
+    const expectedRootNode = {
+      __typename: 'Root',
+      _id: 1,
+      createdAt: creationDate,
+      name: 'root',
+      children: [
+        {
+          __typename: 'Node',
+          _id: 'Node2',
+          children: [],
+          isChecked: false,
+          text: 'secondNode',
+          membersIds: []
+        },
+        {
+          __typename: 'Node',
+          _id: 'Node1',
+          children: [],
+          isChecked: false,
+          text: 'firstNode',
+          membersIds: []
+        }
+      ]
+    };
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'children', index: 0},
+      parent: [],
+      element: {
+        __typename: 'Node',
+        _id: 'Node1',
+        isChecked: false,
+        text: 'firstNode',
+        membersIds: []
+      }
+    };
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement(addNodeCmd);
+    const addNodeCmd2: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'children', index: 0},
+      parent: [],
+      element: {
+        __typename: 'Node',
+        _id: 'Node2',
+        isChecked: false,
+        text: 'secondNode',
+        membersIds: []
+      }
+    };
+    mutableDoc.insertElement(addNodeCmd2);
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+
+    const replayMutableDoc = mutableDocument(emptyDoc);
+    replayMutableDoc.applyChanges(mutableDoc.changes);
+    expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
+      expectedRootNode
+    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Add an owner', () => {
@@ -109,11 +177,11 @@ describe('Test the basic operations', () => {
       createdAt: creationDate,
       name: 'root',
       owner: {
-          __typename: 'Member',
-          _id: 'Member1',
-          firstName: 'Test',
-          lastName: 'Testable'
-        }
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
     };
     const addOwnerCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
@@ -128,7 +196,7 @@ describe('Test the basic operations', () => {
     };
     const mutableDoc = mutableDocument(emptyDoc);
     mutableDoc.insertElement(addOwnerCmd);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
@@ -138,9 +206,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Add a member', () => {
@@ -150,12 +218,17 @@ describe('Test the basic operations', () => {
       _id: 1,
       createdAt: creationDate,
       name: 'root',
-      members: new Map([['Member.Member1', {
-        __typename: 'Member',
-        _id: 'Member1',
-        firstName: 'Test',
-        lastName: 'Testable'
-      }]])
+      members: new Map([
+        [
+          'Member.Member1',
+          {
+            __typename: 'Member',
+            _id: 'Member1',
+            firstName: 'Test',
+            lastName: 'Testable'
+          }
+        ]
+      ])
     };
     const addMemberCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
@@ -170,7 +243,7 @@ describe('Test the basic operations', () => {
     };
     const mutableDoc = mutableDocument(emptyDoc);
     mutableDoc.insertElement(addMemberCmd);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
@@ -180,9 +253,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Change a node', () => {
@@ -320,7 +393,7 @@ describe('Test the basic operations', () => {
       element: [{field: 'children', index: 0}]
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     const replayMutableDoc = mutableDocument(emptyDoc);
@@ -328,9 +401,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Add and remove an owner', () => {
@@ -360,7 +433,7 @@ describe('Test the basic operations', () => {
       element: ['owner']
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     const replayMutableDoc = mutableDocument(emptyDoc);
@@ -368,9 +441,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Add and remove a member', () => {
@@ -400,7 +473,7 @@ describe('Test the basic operations', () => {
       element: [{field: 'members', nodeId: 'Member1', nodeType: 'Member'}]
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     const replayMutableDoc = mutableDocument(emptyDoc);
@@ -408,9 +481,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Removing a parent node, removes its descendants as well', () => {
@@ -445,7 +518,7 @@ describe('Test the basic operations', () => {
         _id: 'Node1'
       }
     });
-    const updatedDoc = mutableDoc.updatedDocument;
+    const updatedDoc = mutableDoc.updatedDocument();
     expect(hasMappedElement(updatedDoc, 'Node', 'Node1')).toBe(false);
     expect(hasMappedElement(updatedDoc, 'Node', 'Node2')).toBe(false);
   });
@@ -479,7 +552,7 @@ describe('Test the basic operations', () => {
         _id: 'Node2'
       }
     });
-    const updatedDoc = mutableDoc.updatedDocument;
+    const updatedDoc = mutableDoc.updatedDocument();
     expect(hasMappedElement(updatedDoc, 'Node', 'Node1')).toBe(true);
     expect(
       compactTreeNode(mappedElement(updatedDoc, 'Node', 'Node1')).children
@@ -535,7 +608,7 @@ describe('Test the basic operations', () => {
       }
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     const replayMutableDoc = mutableDocument(emptyDoc);
@@ -543,9 +616,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Added three nodes and move a child', () => {
@@ -624,7 +697,7 @@ describe('Test the basic operations', () => {
       }
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     const replayMutableDoc = mutableDocument(emptyDoc);
@@ -632,9 +705,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Added node, its child and modified parent', () => {
@@ -691,7 +764,7 @@ describe('Test the basic operations', () => {
       }
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
   });
@@ -750,7 +823,7 @@ describe('Test the basic operations', () => {
       }
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
-    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+    expect(denormalizeDocument(mutableDoc.updatedDocument())).toMatchObject(
       expectedRootNode
     );
     const replayMutableDoc = mutableDocument(emptyDoc);
@@ -758,9 +831,9 @@ describe('Test the basic operations', () => {
     expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
       expectedRootNode
     );
-    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
-      expectedRootNode
-    );
+    expect(
+      denormalizeDocument(replayMutableDoc.updatedDocument())
+    ).toMatchObject(expectedRootNode);
   });
 
   test('Added node, its child and modified parent - test the paths', () => {
@@ -824,7 +897,7 @@ describe('Test the basic operations', () => {
         membersIds: []
       }
     });
-    const modifiedDoc = mutableDoc.updatedDocument;
+    const modifiedDoc = mutableDoc.updatedDocument();
     // @ts-expect-error  test incorrect parameters
     expect(hasMappedElement(mutableDoc, false, {})).toBe(false);
     expect(hasMappedElement(mutableDoc, 'Root', 2)).toBe(false);

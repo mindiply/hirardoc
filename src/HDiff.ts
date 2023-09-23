@@ -175,7 +175,10 @@ export function diff<
               } else {
                 // New element, let's add the basic info from it,
                 // emptying children links
-                const elementInfo = Object.assign({}, destChild.data);
+                const elementInfo = Object.assign({}, destChild.data, {
+                  __typename: destChild.__typename,
+                  _id: destChild._id
+                });
                 mutableDoc.insertElement({
                   parent: nodePath,
                   position: {
@@ -191,15 +194,33 @@ export function diff<
           }
         } else if (schemaLinkType === LinkType.single) {
           if (!isElementId(recordLinkField)) {
-            if (mutableElement.children[linkFieldName]) {
-              mutableDoc.changeElement({
-                element: pathForElementWithId(mutableDoc, nodeType, nodeId),
-                // @ts-expect-error unable to extract type for changes
-                changes: {
-                  __typename: destElement.__typename,
-                  [linkFieldName]: null
-                }
-              });
+            const currentLink = isElementId(
+              mutableElement.children[linkFieldName]
+            )
+              ? (mutableElement.children[linkFieldName] as ElementId<
+                  keyof NodesDef
+                >)
+              : null;
+            if (currentLink) {
+              if (
+                hasMappedElement(
+                  laterDoc,
+                  currentLink.__typename,
+                  currentLink._id
+                )
+              ) {
+                // The record we link to is present in the later document, so we orhpan it at the moment, and then
+                // we can move it from here, rather that delete and reinsert in the document
+                mutableDoc.moveElement({
+                  element: currentLink,
+                  toParent: {__typename: nodeType, _id: nodeId},
+                  toPosition: {field: '__orphans', index: 0}
+                });
+              } else {
+                mutableDoc.deleteElement({
+                  element: currentLink
+                });
+              }
             } else {
               // No change, null both originally and now
               continue;
@@ -223,7 +244,10 @@ export function diff<
                   NodesDef[keyof NodesDef]
                 >,
                 element: Object.assign(
-                  {},
+                  {
+                    __typename: recordLinkField.__typename,
+                    _id: recordLinkField._id
+                  },
                   mappedElement(
                     laterDoc,
                     recordLinkField.__typename,
@@ -247,10 +271,12 @@ export function diff<
                 toPosition: linkFieldName as AllChildrenFields<
                   NodesDef[keyof NodesDef]
                 >,
-                // @ts-expect-error unable to extract type for changes
                 changes:
                   Object.keys(childInfoDiff).length > 0
-                    ? childInfoDiff
+                    ? Object.assign(
+                        {__typename: recordLinkField.__typename},
+                        childInfoDiff
+                      )
                     : undefined
               });
             }
@@ -259,7 +285,6 @@ export function diff<
           if (!(recordLinkField instanceof Map)) {
             throw new TypeError('Expected a map of link ids');
           }
-          // @ts-expect-error Unable to extract map type
           const originalMap: Map<
             string,
             ElementId<keyof NodesDef>
@@ -270,7 +295,7 @@ export function diff<
                   nodeType,
                   nodeId
                 ) as NodesDef[keyof NodesDef]
-              )[linkFieldName as keyof NodesDef[keyof NodesDef]]
+              ).children[linkFieldName as keyof NodesDef[keyof NodesDef]]
             : new Map();
           if (!(originalMap instanceof Map)) {
             throw new TypeError('The original node is not a map of elementIds');
@@ -310,7 +335,10 @@ export function diff<
                   },
                   changes:
                     Object.keys(childInfoDiff).length > 0
-                      ? Object.assign({__typename: childElementId.__typename}, childInfoDiff)
+                      ? Object.assign(
+                          {__typename: childElementId.__typename},
+                          childInfoDiff
+                        )
                       : undefined
                 });
               } else {
@@ -323,11 +351,17 @@ export function diff<
                     nodeType: childElementId.__typename,
                     nodeId: childElementId._id
                   },
-                  element: mappedElement(
-                    laterDoc,
-                    childElementId.__typename,
-                    childElementId._id
-                  ).data
+                  element: Object.assign(
+                    {
+                      __typename: childElementId.__typename,
+                      _id: childElementId._id
+                    },
+                    mappedElement(
+                      laterDoc,
+                      childElementId.__typename,
+                      childElementId._id
+                    ).data
+                  )
                 });
               }
             } else {
@@ -402,14 +436,14 @@ export function diffElementInfo<
       infoDiff[fieldName as keyof NodeDataOfTreeNode<NodesDef, T>] = laterVal;
     }
   }
-  for (const fieldName in laterEl) {
+  for (const fieldName in laterEl.data) {
     if (fieldsChecked.has(fieldName)) {
       continue;
     }
     // If the field is not in the set of checked fields,
     // it was undefined in base but is defined in later
     infoDiff[fieldName as keyof NodeDataOfTreeNode<NodesDef, T>] = (
-      laterEl as any
+      laterEl.data as any
     )[fieldName];
   }
   return infoDiff;

@@ -20,20 +20,15 @@ describe('Diff between versions of the same tree', () => {
     expect(diff(a, b)).toEqual([]);
   });
 
-  test('Diff single insertion command', () => {
+  test('Diff single array insertion command', () => {
     const a = emptyTestDocument();
-    const addNodeCmd: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
+      position: {field: 'children', index: 0},
       parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
-        children: [],
         isChecked: false,
         text: 'firstNode',
         membersIds: []
@@ -42,22 +37,17 @@ describe('Diff between versions of the same tree', () => {
     const mutableDoc = mutableDocument(a);
     mutableDoc.insertElement(addNodeCmd);
     const b = mutableDoc.updatedDocument();
-    const expectedDiff: HDocOperation<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    >[] = [
+    const expectedDiff: HDocOperation<ITestDocElementsMap, 'Node'>[] = [
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         parent: {
           __typename: 'Root',
           _id: 1
         },
-        position: ['children', 0],
+        position: {field: 'children', index: 0},
         element: {
           __typename: 'Node',
           _id: 'Node1',
-          children: [],
           isChecked: false,
           text: 'firstNode',
           membersIds: []
@@ -67,20 +57,85 @@ describe('Diff between versions of the same tree', () => {
     expect(diff(a, b)).toMatchObject(expectedDiff);
   });
 
-  test('Diff single insertion command after another insertion', () => {
-    let a = emptyTestDocument();
-    const addNodeCmd: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+  test('Diff single map insertion command', () => {
+    const a = emptyTestDocument();
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
+      position: {field: 'members', nodeType: 'Member', nodeId: 'Member1'},
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    };
+    const mutableDoc = mutableDocument(a);
+    mutableDoc.insertElement(addNodeCmd);
+    const b = mutableDoc.updatedDocument();
+    const expectedDiff: HDocOperation<ITestDocElementsMap, 'Member'>[] = [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        parent: {
+          __typename: 'Root',
+          _id: 1
+        },
+        position: {field: 'members', nodeType: 'Member', nodeId: 'Member1'},
+        element: {
+          __typename: 'Member',
+          _id: 'Member1',
+          firstName: 'Test',
+          lastName: 'Testable'
+        }
+      }
+    ];
+    expect(diff(a, b)).toMatchObject(expectedDiff);
+  });
+
+  test('Diff single field link insertion command', () => {
+    const a = emptyTestDocument();
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: 'owner',
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    };
+    const mutableDoc = mutableDocument(a);
+    mutableDoc.insertElement(addNodeCmd);
+    const b = mutableDoc.updatedDocument();
+    const expectedDiff: HDocOperation<ITestDocElementsMap, 'Member'>[] = [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        parent: {
+          __typename: 'Root',
+          _id: 1
+        },
+        position: 'owner',
+        element: {
+          __typename: 'Member',
+          _id: 'Member1',
+          firstName: 'Test',
+          lastName: 'Testable'
+        }
+      }
+    ];
+    expect(diff(a, b)).toMatchObject(expectedDiff);
+  });
+
+  test('Unshift like array insertion', () => {
+    let a = emptyTestDocument();
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'children', index: 0},
       parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
-        children: [],
         isChecked: false,
         text: 'firstNode',
         membersIds: []
@@ -90,18 +145,13 @@ describe('Diff between versions of the same tree', () => {
     mutableDoc.insertElement(addNodeCmd);
     a = mutableDoc.updatedDocument();
     mutableDoc = mutableDocument(a);
-    const addNodeCmd2: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const addNodeCmd2: InsertElement<ITestDocElementsMap, 'Node', 'Node'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
-      parent: ['children', 0],
+      position: {field: 'children', index: 0},
+      parent: [{field: 'children', index: 0}],
       element: {
         __typename: 'Node',
         _id: 'Node2',
-        children: [],
         isChecked: false,
         text: 'secondNode',
         membersIds: []
@@ -109,22 +159,17 @@ describe('Diff between versions of the same tree', () => {
     };
     mutableDoc.insertElement(addNodeCmd2);
     const b = mutableDoc.updatedDocument();
-    const expectedDiff: HDocOperation<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    >[] = [
+    const expectedDiff: HDocOperation<ITestDocElementsMap, 'Node', 'Node'>[] = [
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
         parent: {
           __typename: 'Node',
           _id: 'Node1'
         },
-        position: ['children', 0],
+        position: {field: 'children', index: 0},
         element: {
           __typename: 'Node',
           _id: 'Node2',
-          children: [],
           isChecked: false,
           text: 'secondNode',
           membersIds: []
@@ -134,38 +179,112 @@ describe('Diff between versions of the same tree', () => {
     expect(diff(a, b)).toMatchObject(expectedDiff);
   });
 
-  test('Move of child between parent and inserted parent', () => {
+  test('Member set insertion', () => {
+    let a = emptyTestDocument();
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'members', nodeType: 'Member', nodeId: 'Member1'},
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    };
+    let mutableDoc = mutableDocument(a);
+    mutableDoc.insertElement(addNodeCmd);
+    a = mutableDoc.updatedDocument();
+    mutableDoc = mutableDocument(a);
+    const addNodeCmd2: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'members', nodeType: 'Member', nodeId: 'Member2'},
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member2',
+        firstName: 'Test2',
+        lastName: 'Testable'
+      }
+    };
+    mutableDoc.insertElement(addNodeCmd2);
+    const b = mutableDoc.updatedDocument();
+    const expectedDiff: HDocOperation<ITestDocElementsMap>[] = [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        parent: {
+          __typename: 'Root',
+          _id: 1
+        },
+        position: {field: 'members', nodeType: 'Member', nodeId: 'Member2'},
+        element: {
+          __typename: 'Member',
+          _id: 'Member2',
+          firstName: 'Test2',
+          lastName: 'Testable'
+        }
+      }
+    ];
+    expect(diff(a, b)).toMatchObject(expectedDiff);
+  });
+
+  test('Member owner insertion', () => {
+    const a = emptyTestDocument();
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: 'owner',
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    };
+    let mutableDoc = mutableDocument(a);
+    mutableDoc.insertElement(addNodeCmd);
+    const b = mutableDoc.updatedDocument();
+    const expectedDiff: HDocOperation<ITestDocElementsMap>[] = [
+      {
+        __typename: HDocCommandType.INSERT_ELEMENT,
+        parent: {
+          __typename: 'Root',
+          _id: 1
+        },
+        position: 'owner',
+        element: {
+          __typename: 'Member',
+          _id: 'Member1',
+          firstName: 'Test',
+          lastName: 'Testable'
+        }
+      }
+    ];
+    expect(diff(a, b)).toMatchObject(expectedDiff);
+  });
+
+  test('Move of child between array link parent and inserted parent', () => {
     let a = emptyTestDocument();
     let mutableDoc = mutableDocument(a);
-    const addNodeCmd: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
+      position: {field: 'children', index: 0},
       parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
-        children: [],
         isChecked: false,
         text: 'firstNode',
         membersIds: []
       }
     };
-    const addNodeCmd2: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const addNodeCmd2: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
-      parent: ['children', 0],
+      position: {field: 'children', index: 0},
+      parent: [{field: 'children', index: 0}],
       element: {
         __typename: 'Node',
         _id: 'Node2',
-        children: [],
         isChecked: false,
         text: 'secondNode',
         membersIds: []
@@ -177,18 +296,13 @@ describe('Diff between versions of the same tree', () => {
     a = mutableDoc.updatedDocument();
     mutableDoc = mutableDocument(a);
 
-    const addNodeCmd3: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const addNodeCmd3: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
+      position: {field: 'children', index: 0},
       parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node3',
-        children: [],
         isChecked: false,
         text: 'thirdNode',
         membersIds: []
@@ -196,15 +310,14 @@ describe('Diff between versions of the same tree', () => {
     };
     mutableDoc.insertElement(addNodeCmd3);
 
-    const moveElementCmd: MoveElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const moveElementCmd: MoveElement<ITestDocElementsMap, 'Node'> = {
       __typename: HDocCommandType.MOVE_ELEMENT,
-      element: ['children', 1, 'children', 0],
-      toParent: ['children', 0],
-      toPosition: ['children', 0],
+      element: [
+        {field: 'children', index: 1},
+        {field: 'children', index: 0}
+      ],
+      toParent: [{field: 'children', index: 0}],
+      toPosition: {field: 'children', index: 0},
       changes: {
         __typename: 'Node',
         isChecked: true,
@@ -213,14 +326,10 @@ describe('Diff between versions of the same tree', () => {
     };
     mutableDoc.moveElement(moveElementCmd);
     const b = mutableDoc.updatedDocument();
-    const expectedDiff: HDocOperation<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    >[] = [
+    const expectedDiff: HDocOperation<ITestDocElementsMap>[] = [
       {
         __typename: HDocCommandType.INSERT_ELEMENT,
-        position: ['children', 0],
+        position: {field: 'children', index: 0},
         parent: {
           __typename: 'Root',
           _id: 1
@@ -228,7 +337,6 @@ describe('Diff between versions of the same tree', () => {
         element: {
           __typename: 'Node',
           _id: 'Node3',
-          children: [],
           isChecked: false,
           text: 'thirdNode',
           membersIds: []
@@ -244,7 +352,7 @@ describe('Diff between versions of the same tree', () => {
           __typename: 'Node',
           _id: 'Node3'
         },
-        toPosition: ['children', 0],
+        toPosition: {field: 'children', index: 0},
         changes: {
           __typename: 'Node',
           isChecked: true,
@@ -256,20 +364,94 @@ describe('Diff between versions of the same tree', () => {
     expect(abDiff).toMatchObject(expectedDiff);
   });
 
+  test('Move member from owner to member set with one existing member', () => {
+    const start = emptyTestDocument();
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: 'owner',
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    };
+    let mutableDoc = mutableDocument(start);
+    mutableDoc.insertElement(addNodeCmd);
+    mutableDoc.insertElement({
+      position: {field: 'members', nodeType: 'Member', nodeId: 'Member2'},
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member2',
+        firstName: 'Test2',
+        lastName: 'Testable'
+      }
+    });
+    const a = mutableDoc.updatedDocument();
+    mutableDoc.moveElement({
+      element: {
+        __typename: 'Member',
+        _id: 'Member1'
+      },
+      toPosition: {
+        field: 'members',
+        nodeType: 'Member',
+        nodeId: 'Member1'
+      },
+      toParent: []
+    });
+    const b = mutableDoc.updatedDocument();
+    const expectedDiff: HDocOperation<ITestDocElementsMap>[] = [
+      {
+        __typename: HDocCommandType.MOVE_ELEMENT,
+        toParent: {
+          __typename: 'Root',
+          _id: 1
+        },
+        toPosition: {
+          field: '__orphans',
+          index: 0
+        },
+        element: {
+          __typename: 'Member',
+          _id: 'Member1'
+        }
+      },
+      {
+        __typename: HDocCommandType.MOVE_ELEMENT,
+        toParent: {
+          __typename: 'Root',
+          _id: 1
+        },
+        toPosition: {
+          field: 'members',
+          nodeType: 'Member',
+          nodeId: 'Member1'
+        },
+        element: {
+          __typename: 'Member',
+          _id: 'Member1'
+        }
+      }
+    ];
+    expect(diff(a, b)).toMatchObject(expectedDiff);
+    const updatedRoot = b.getNode(b.rootId);
+    expect(updatedRoot!.children.owner).toBe(null);
+    expect(updatedRoot!.children.members.size).toBe(2);
+    expect(updatedRoot!.children.__orphans).toMatchObject([]);
+  });
+
   test('Change of parent and deletion of a child node', () => {
     let a = emptyTestDocument();
-    const addNodeCmd: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const addNodeCmd: InsertElement<ITestDocElementsMap, 'Node', 'Root'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
+      position: {field: 'children', index: 0},
       parent: [],
       element: {
         __typename: 'Node',
         _id: 'Node1',
-        children: [],
         isChecked: false,
         text: 'firstNode',
         membersIds: []
@@ -277,18 +459,13 @@ describe('Diff between versions of the same tree', () => {
     };
     let mutableDoc = mutableDocument(a);
     mutableDoc.insertElement(addNodeCmd);
-    const addNodeCmd2: InsertElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const addNodeCmd2: InsertElement<ITestDocElementsMap, 'Node', 'Node'> = {
       __typename: HDocCommandType.INSERT_ELEMENT,
-      position: ['children', 0],
-      parent: ['children', 0],
+      position: {field: 'children', index: 0},
+      parent: [{field: 'children', index: 0}],
       element: {
         __typename: 'Node',
         _id: 'Node2',
-        children: [],
         isChecked: false,
         text: 'secondNode',
         membersIds: []
@@ -299,16 +476,15 @@ describe('Diff between versions of the same tree', () => {
     mutableDoc = mutableDocument(a);
     const deleteElementCmd: DeleteElement<ITestDocElementsMap> = {
       __typename: HDocCommandType.DELETE_ELEMENT,
-      element: ['children', 0, 'children', 0]
+      element: [
+        {field: 'children', index: 0},
+        {field: 'children', index: 0}
+      ]
     };
     mutableDoc.deleteElement(deleteElementCmd);
-    const changeElementCmd: ChangeElement<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    > = {
+    const changeElementCmd: ChangeElement<ITestDocElementsMap, 'Node'> = {
       __typename: HDocCommandType.CHANGE_ELEMENT,
-      element: ['children', 0],
+      element: [{field: 'children', index: 0}],
       changes: {
         __typename: 'Node',
         isChecked: true
@@ -316,11 +492,7 @@ describe('Diff between versions of the same tree', () => {
     };
     mutableDoc.changeElement(changeElementCmd);
     const b = mutableDoc.updatedDocument();
-    const expectedDiff: HDocOperation<
-      ITestDocElementsMap,
-      keyof ITestDocElementsMap,
-      INode
-    >[] = [
+    const expectedDiff: HDocOperation<ITestDocElementsMap>[] = [
       {
         __typename: HDocCommandType.CHANGE_ELEMENT,
         element: {

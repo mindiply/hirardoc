@@ -1,10 +1,13 @@
+import {isEqual} from 'lodash';
 import {
+  AllChildrenFields,
   ChangeElement,
   ElementId,
   HDocCommandType,
   NodeChildrenOfTreeNode,
   NodeDataOfTreeNode,
   NodeLink,
+  ParentToChildLinkField,
   TreeNode
 } from './HTypes';
 import {
@@ -75,7 +78,12 @@ function nodeLinkReducer<T>(
       ) {
         return state;
       }
-      const atIndex = action.atIndex ? action.atIndex : state.length;
+      const atIndex =
+        action.atIndex !== undefined &&
+        action.atIndex >= 0 &&
+        action.atIndex < state.length
+          ? action.atIndex
+          : state.length;
       if (atIndex < 0 || atIndex > state.length) {
         throw new RangeError('Incorrect index for insertion');
       }
@@ -170,6 +178,19 @@ interface ChangeTreeNodeData<
   changes: Partial<NodeDataOfTreeNode<NodesDef, N>>;
 }
 
+interface UpdateParentFieldAction<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >
+> {
+  __typename: 'UpdateParentField';
+  parentLink: null | ParentToChildLinkField<
+    keyof NodesDef,
+    keyof NodeChildrenOfTreeNode<NodesDef, keyof NodesDef>
+  >;
+}
+
 type TreeNodeAction<
   NodesDef extends Record<
     keyof NodesDef,
@@ -178,7 +199,8 @@ type TreeNodeAction<
   N extends keyof NodesDef
 > =
   | LinkFieldAction<keyof NodeChildrenOfTreeNode<NodesDef, N>, keyof NodesDef>
-  | ChangeTreeNodeData<NodesDef, N>;
+  | ChangeTreeNodeData<NodesDef, N>
+  | UpdateParentFieldAction<NodesDef>;
 
 export function treeNodeReducer<
   NodesDef extends Record<
@@ -190,16 +212,35 @@ export function treeNodeReducer<
   if (!(action && action.__typename)) return state;
   let updatedData = state.data;
   let updatedChildren = state.children;
+  let updatedParent = state.parent;
   if (action.__typename === 'ChangeElementChange') {
-    updatedData = Object.assign({}, state.data, action.changes);
+    const newDataField = Object.assign({}, state.data, action.changes);
+    if (!isEqual(newDataField, updatedData)) {
+      updatedData = newDataField;
+    }
+  } else if (action.__typename === 'UpdateParentField') {
+    if (!isEqual(updatedParent, action.parentLink)) {
+      updatedParent = action.parentLink
+        ? {
+            __typename: action.parentLink.__typename,
+            _id: action.parentLink._id,
+            parentField: action.parentLink.parentField
+          }
+        : null;
+    }
   } else {
     updatedChildren = nodeChildrenReducer(state.children, action);
   }
-  if (updatedChildren !== state.children || updatedData !== state.data) {
+  if (
+    updatedChildren !== state.children ||
+    updatedData !== state.data ||
+    updatedParent !== state.parent
+  ) {
     return {
       ...state,
       children: updatedChildren,
-      data: updatedData
+      data: updatedData,
+      parent: updatedParent
     };
   }
   return state;
