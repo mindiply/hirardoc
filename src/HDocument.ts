@@ -3,7 +3,7 @@ import {
   ArrayPathElement,
   DocumentSchema,
   ElementId,
-  Id,
+  Id, LinksArray,
   LinkType,
   NewNodeInfo,
   NodeChildrenOfTreeNode,
@@ -15,15 +15,16 @@ import {
   PathElement,
   SetPathElement,
   TreeNode
-} from './HTypes';
+} from './HTypes'
 import {
+  elementIdsEquals,
   generateNewId,
   iidToStr,
   isArrayPathElement,
   isDocumentSchema,
   isElementId,
-  isSetPathElement
-} from './HUtils';
+  isSetPathElement, mappedElement
+} from './HUtils'
 
 /**
  * Creates an empty copy version of the normalized document
@@ -224,8 +225,8 @@ export class NormalizedDocumentImpl<
           : lType === LinkType.set
           ? new Map()
           : null;
-      if (!emptyLink) {
-        throw new TypeError('Invalid link type');
+      if (!emptyLink && lType !== LinkType.single) {
+        throw new TypeError('Invalid link value for link type');
       }
       // @ts-expect-error too many generics
       emptyChildren[linkName] = emptyLink;
@@ -376,16 +377,33 @@ export function pathForElementWithId<
   }
   const path: Path<NodesDef> = [];
   if (element.parent) {
-    if (typeof element.parent === 'object') {
-      path.push({
-        field: element.parent.parentField as AllChildrenFields<
-          NodesDef[keyof NodesDef]
-        >,
-        index: element.parent.index!
-      });
+    let pathElement: PathElement<NodesDef> | null = null;
+    const parentEl = mappedElement(doc, element.parent.__typename, element.parent._id);
+    const parentLinkField = parentEl.children[element.parent.parentField];
+    if (parentLinkField) {
+      if (Array.isArray(parentLinkField)) {
+        const index = (parentLinkField as LinksArray<keyof NodesDef>).findIndex(arrayElId => elementIdsEquals(arrayElId, element));
+        if (index === -1) {
+          throw new RangeError('The child element cannot find itself in the parent array');
+        }
+        pathElement = {
+          field: element.parent.parentField as AllChildrenFields<NodesDef>,
+          index
+        }
+      } else if (parentLinkField instanceof Map) {
+        pathElement = {
+          field: element.parent.parentField as AllChildrenFields<NodesDef>,
+          nodeType: element.parent.__typename,
+          nodeId: element.parent._id
+        }
+      } else {
+        pathElement = element.parent.parentField as AllChildrenFields<NodesDef>;
+      }
+      path.push(pathElement!);
     } else {
-      path.push(element.parent);
+      throw new TypeError('Cannot find the field that should connect the parent to the node');
     }
+
     const parentPath = pathForElementWithId(
       doc,
       element.parent.__typename,

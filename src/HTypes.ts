@@ -31,7 +31,6 @@ export type NodeLink<LinkedTypename> =
 export interface ParentToChildLinkField<ParentType, ParentField>
   extends ElementId<ParentType> {
   parentField: ParentField;
-  index?: number;
 }
 
 export interface TreeNode<

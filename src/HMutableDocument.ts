@@ -141,9 +141,6 @@ class MutableDocumentImpl<
       }
     }) as NodesDef[ChildType];
     newElement.data = Object.assign(newElement.data, newNodeData);
-    if (indexInParent !== -1) {
-      newElement.parent!.index = indexInParent;
-    }
 
     const updatedParentNode = treeNodeReducer(parentNode, {
       __typename: 'AddNodeToLinkField',

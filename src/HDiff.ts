@@ -310,7 +310,7 @@ export function diff<
                   },
                   changes:
                     Object.keys(childInfoDiff).length > 0
-                      ? childInfoDiff
+                      ? Object.assign({__typename: childElementId.__typename}, childInfoDiff)
                       : undefined
                 });
               } else {

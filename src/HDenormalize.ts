@@ -5,10 +5,11 @@ import {
   TreeNode,
   LinkType,
   NodeLink,
-  CompactTreeNode
-} from './HTypes';
+  CompactTreeNode, ElementId
+} from './HTypes'
 import {breadthFirstNodes, depthFirstNodes} from './HVisit';
 import {extractElementId, isElementId, mappedElement} from './HUtils';
+import {omit} from 'lodash';
 
 const elementUid = <U>(elementType: U, elementId: Id) =>
   `${elementType}:${elementId}`;
@@ -21,8 +22,9 @@ export function denormalizeDocument<
   R extends keyof NodesDef
 >(
   doc: NormalizedDocument<NodesDef, R>,
-  compatcNodes = true
-): IParentedNode<keyof NodesDef> {
+  compactNodes = true,
+  removeParentField = true
+): ElementId<keyof NodesDef> | IParentedNode<keyof NodesDef> {
   const nodes: Map<string, IParentedNode> = new Map();
   // I will need two visits. One to create all the nodes while setting the parents, and
   // a second one where we change the children.
@@ -44,8 +46,14 @@ export function denormalizeDocument<
       : null;
     const parent = parentUid ? nodes.get(parentUid) || null : null;
 
-    const denormalizedNode: IParentedNode = compatcNodes
-      ? {
+    const denormalizedNode: IParentedNode | ElementId<NodesDef> = compactNodes
+      ? removeParentField ? {
+        __typename,
+        _id,
+        ...data,
+        ...links,
+        children
+      } : {
           __typename,
           _id,
           parent,
@@ -53,7 +61,8 @@ export function denormalizeDocument<
           ...links,
           children
         }
-      : {...element, parent};
+      : removeParentField ? omit(element, 'parent') : {...omit(element, 'parent'), parent};
+    // @ts-expect-error odd typing
     nodes.set(elementUid(nodeType, nodeId), denormalizedNode);
   }
   for (const [nodeType, nodeId] of depthFirstElIds) {
@@ -126,3 +135,4 @@ export function compactTreeNode<
     {parent: node.parent}
   );
 }
+

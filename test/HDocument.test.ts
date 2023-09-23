@@ -29,7 +29,9 @@ describe('Empty doc and nodes', () => {
       __typename: 'Root',
       data: {name: ''},
       children: {
-        children: []
+        children: [],
+        owner: null,
+        members: new Map()
       }
     });
   });
@@ -98,6 +100,90 @@ describe('Test the basic operations', () => {
     );
   });
 
+  test('Add an owner', () => {
+    const emptyDoc = emptyTestDocument();
+    const expectedRootNode = {
+      __typename: 'Root',
+      _id: 1,
+      createdAt: creationDate,
+      name: 'root',
+      owner: {
+          __typename: 'Member',
+          _id: 'Member1',
+          firstName: 'Test',
+          lastName: 'Testable'
+        }
+    };
+    const addOwnerCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: 'owner',
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    };
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement(addOwnerCmd);
+    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+
+    const replayMutableDoc = mutableDocument(emptyDoc);
+    replayMutableDoc.applyChanges(mutableDoc.changes);
+    expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+  });
+
+  test('Add a member', () => {
+    const emptyDoc = emptyTestDocument();
+    const expectedRootNode = {
+      __typename: 'Root',
+      _id: 1,
+      createdAt: creationDate,
+      name: 'root',
+      members: new Map([['Member.Member1', {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }]])
+    };
+    const addMemberCmd: InsertElement<ITestDocElementsMap, 'Member', 'Root'> = {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'members', nodeId: 'Member1', nodeType: 'Member'},
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    };
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement(addMemberCmd);
+    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+
+    const replayMutableDoc = mutableDocument(emptyDoc);
+    replayMutableDoc.applyChanges(mutableDoc.changes);
+    expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+  });
+
   test('Change a node', () => {
     let doc = emptyTestDocument();
     doc = docReducer(doc, {
@@ -137,6 +223,74 @@ describe('Test the basic operations', () => {
     });
   });
 
+  test('Change an owner', () => {
+    let doc = emptyTestDocument();
+    doc = docReducer(doc, {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: 'owner',
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    });
+    doc = docReducer(doc, {
+      __typename: HDocCommandType.CHANGE_ELEMENT,
+      element: {
+        __typename: 'Member',
+        _id: 'Member1'
+      },
+      changes: {
+        __typename: 'Member',
+        lastName: 'Tested'
+      }
+    });
+    expect(
+      compactTreeNode(doc.getNode({__typename: 'Member', _id: 'Member1'})!)
+    ).toMatchObject({
+      _id: 'Member1',
+      __typename: 'Member',
+      firstName: 'Test',
+      lastName: 'Tested'
+    });
+  });
+
+  test('Change a member', () => {
+    let doc = emptyTestDocument();
+    doc = docReducer(doc, {
+      __typename: HDocCommandType.INSERT_ELEMENT,
+      position: {field: 'members', nodeType: 'Member', nodeId: 'Member1'},
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    });
+    doc = docReducer(doc, {
+      __typename: HDocCommandType.CHANGE_ELEMENT,
+      element: {
+        __typename: 'Member',
+        _id: 'Member1'
+      },
+      changes: {
+        __typename: 'Member',
+        lastName: 'Tested'
+      }
+    });
+    expect(
+      compactTreeNode(doc.getNode({__typename: 'Member', _id: 'Member1'})!)
+    ).toMatchObject({
+      _id: 'Member1',
+      __typename: 'Member',
+      firstName: 'Test',
+      lastName: 'Tested'
+    });
+  });
+
   test('Add and remove one node', () => {
     const emptyDoc = emptyTestDocument();
     const expectedRootNode = {
@@ -144,7 +298,9 @@ describe('Test the basic operations', () => {
       _id: 1,
       createdAt: creationDate,
       name: 'root',
-      children: []
+      children: [],
+      owner: null,
+      members: new Map()
     };
 
     const mutableDoc = mutableDocument(emptyDoc);
@@ -161,6 +317,86 @@ describe('Test the basic operations', () => {
     });
     mutableDoc.deleteElement({
       element: [{field: 'children', index: 0}]
+    });
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+    const replayMutableDoc = mutableDocument(emptyDoc);
+    replayMutableDoc.applyChanges(mutableDoc.changes);
+    expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+  });
+
+  test('Add and remove an owner', () => {
+    const emptyDoc = emptyTestDocument();
+    const expectedRootNode = {
+      __typename: 'Root',
+      _id: 1,
+      createdAt: creationDate,
+      name: 'root',
+      children: [],
+      owner: null,
+      members: new Map()
+    };
+
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement({
+      position: 'owner',
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    });
+    mutableDoc.deleteElement({
+      element: ['owner']
+    });
+    expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
+    expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+    const replayMutableDoc = mutableDocument(emptyDoc);
+    replayMutableDoc.applyChanges(mutableDoc.changes);
+    expect(denormalizeDocument(replayMutableDoc)).toMatchObject(
+      expectedRootNode
+    );
+    expect(denormalizeDocument(replayMutableDoc.updatedDocument)).toMatchObject(
+      expectedRootNode
+    );
+  });
+
+  test('Add and remove a member', () => {
+    const emptyDoc = emptyTestDocument();
+    const expectedRootNode = {
+      __typename: 'Root',
+      _id: 1,
+      createdAt: creationDate,
+      name: 'root',
+      children: [],
+      owner: null,
+      members: new Map()
+    };
+
+    const mutableDoc = mutableDocument(emptyDoc);
+    mutableDoc.insertElement({
+      position: {field: 'members', nodeId: 'Member1', nodeType: 'Member'},
+      parent: [],
+      element: {
+        __typename: 'Member',
+        _id: 'Member1',
+        firstName: 'Test',
+        lastName: 'Testable'
+      }
+    });
+    mutableDoc.deleteElement({
+      element: [{field: 'members', nodeId: 'Member1', nodeType: 'Member'}]
     });
     expect(denormalizeDocument(mutableDoc)).toMatchObject(expectedRootNode);
     expect(denormalizeDocument(mutableDoc.updatedDocument)).toMatchObject(

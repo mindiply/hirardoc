@@ -3,12 +3,21 @@ import {
   ElementId,
   Id,
   LinksArray,
+  LinksSet,
   LinkType,
   NormalizedDocument,
+  SingleLink,
   TreeNode
-} from '../src';
-import {omit} from 'lodash';
-import {createNormalizedDocument} from '../src/HDocument';
+} from '../src'
+import {omit} from 'lodash'
+import {createNormalizedDocument} from '../src/HDocument'
+
+export interface MemberFields {
+  firstName: string;
+  lastName: string;
+}
+
+export type Member = TreeNode<ITestDocElementsMap, 'Member', MemberFields, {}, {}>;
 
 export interface IRootFields {
   name: string;
@@ -21,6 +30,8 @@ export type IRoot = TreeNode<
   IRootFields,
   {
     children: LinksArray<'Node'>;
+    owner: SingleLink<'Member'>;
+    members: LinksSet<'Member'>;
   },
   {}
 >;
@@ -50,6 +61,7 @@ export interface INodeNode extends ElementId<'Node'>, INodeFields {
 }
 
 export interface ITestDocElementsMap {
+  Member: Member;
   Root: IRoot;
   Node: INode;
 }
@@ -63,6 +75,14 @@ export const testDocSchema: DocumentSchema<ITestDocElementsMap, 'Root'> = {
   documentType: 'TestDocSchema',
   rootType: 'Root',
   nodeTypes: {
+    Member: {
+      __typename: 'Member',
+      children: {},
+      data: () => ({
+        lastName: '',
+        firstName:''
+      })
+    },
     Node: {
       __typename: 'Node',
       children: {
@@ -83,7 +103,9 @@ export const testDocSchema: DocumentSchema<ITestDocElementsMap, 'Root'> = {
       }),
       links: {},
       children: {
-        children: LinkType.array
+        children: LinkType.array,
+        owner: LinkType.single,
+        members: LinkType.set
       }
     }
   }
