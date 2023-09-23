@@ -41,13 +41,27 @@ export interface TreeNode<
   LinksFields extends Record<any, NodeLink<keyof NodesDef>>
 > extends ElementId<NodeType> {
   data: NodeData;
-  children: ChildrenFields;
+  children: ChildrenFields & {__orphans?: LinksArray<keyof NodesDef>};
   links?: LinksFields;
   parent: null | ParentToChildLinkField<
     keyof NodesDef,
     keyof NodeChildrenOfTreeNode<NodesDef, keyof NodesDef>
   >;
 }
+
+export type RootTreeNode<
+  NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>,
+  NodeType extends keyof NodesDef,
+  NodeData,
+  ChildrenFields extends Record<any, NodeLink<keyof NodesDef>>,
+  LinksFields extends Record<any, NodeLink<keyof NodesDef>>
+> = TreeNode<
+  NodesDef,
+  NodeType,
+  NodeData,
+  ChildrenFields & {__orphans: LinksArray<keyof NodesDef>},
+  LinksFields
+>;
 
 export type CompactTreeNode<
   NodesDef extends Record<keyof NodesDef, TreeNode<any, any, any, any, any>>,
@@ -82,7 +96,7 @@ export type NodeChildrenOfTreeNode<
   >,
   N extends keyof NodesDef
 > = NodesDef[N] extends TreeNode<NodesDef, N, any, infer ChildrenFields, any>
-  ? ChildrenFields
+  ? ChildrenFields & {__orphans?: LinksArray<keyof NodesDef>}
   : never;
 
 export type NodeLinksOfTreeNode<
@@ -238,7 +252,10 @@ export type PathElement<
 > =
   | AllChildrenFields<NodesDef[ParentType]>
   | SetPathElement<NodesDef, ParentType>
-  | ArrayPathElement<NodesDef, ParentType>;
+  | ArrayPathElement<NodesDef, ParentType>
+  // Used internally during operations if we want to move
+  // single links around, but not lose the entity itself
+  | {field: '__orphans'; index: number};
 
 export type Path<
   NodesDef extends Record<

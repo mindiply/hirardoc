@@ -3,7 +3,8 @@ import {
   ArrayPathElement,
   DocumentSchema,
   ElementId,
-  Id, LinksArray,
+  Id,
+  LinksArray,
   LinkType,
   NewNodeInfo,
   NodeChildrenOfTreeNode,
@@ -13,9 +14,10 @@ import {
   NormalizedDocument,
   Path,
   PathElement,
+  RootTreeNode,
   SetPathElement,
   TreeNode
-} from './HTypes'
+} from './HTypes';
 import {
   elementIdsEquals,
   generateNewId,
@@ -23,8 +25,9 @@ import {
   isArrayPathElement,
   isDocumentSchema,
   isElementId,
-  isSetPathElement, mappedElement
-} from './HUtils'
+  isSetPathElement,
+  mappedElement
+} from './HUtils';
 
 /**
  * Creates an empty copy version of the normalized document
@@ -125,7 +128,7 @@ export function fieldAndIndexOfPosition<
   if (!parentNode) {
     throw new ReferenceError('Parent node not found');
   }
-  let parentFieldName: AllChildrenFields<NodesDef[ParentType]>;
+  let parentFieldName: AllChildrenFields<NodesDef[ParentType]> | '__orphans';
   let indexInParent = -1;
   if (isSetPathElement(positionInParent)) {
     parentFieldName = (positionInParent as SetPathElement<NodesDef, ParentType>)
@@ -172,7 +175,10 @@ export class NormalizedDocumentImpl<
 > implements NormalizedDocument<NodesDef, R>
 {
   public readonly schema: DocumentSchema<NodesDef, R>;
-  protected nodes: Map<string, NodesDef[keyof NodesDef]>;
+  protected nodes: Map<
+    string,
+    NodesDef[keyof NodesDef] | RootTreeNode<NodesDef, R, any, any, any>
+  >;
 
   public rootId: ElementId<R>;
 
@@ -195,11 +201,19 @@ export class NormalizedDocumentImpl<
         root._id = _id;
       }
       this.rootId = root as unknown as ElementId<R>;
-      this.nodes.set(iidToStr(this.rootId), root);
+      this.nodes.set(
+        iidToStr(this.rootId),
+        Object.assign(root, {__orphans: []})
+      );
     } else {
       const treeNodes = Array.from(schemaOrTree[Symbol.iterator]());
       this.nodes = new Map(
-        treeNodes.map(treeNode => [iidToStr(treeNode), treeNode])
+        treeNodes.map(treeNode =>
+          treeNode.__typename === schemaOrTree.rootId.__typename &&
+          treeNode._id === schemaOrTree.rootId._id
+            ? [iidToStr(treeNode), Object.assign({}, treeNode, {__orphans: []})]
+            : [iidToStr(treeNode), treeNode]
+        )
       );
       this.schema = schemaOrTree.schema;
       this.rootId = Object.assign({}, schemaOrTree.rootId);
@@ -207,7 +221,7 @@ export class NormalizedDocumentImpl<
   }
 
   public [Symbol.iterator](): IterableIterator<NodesDef[keyof NodesDef]> {
-    return this.nodes.values();
+    return this.nodes.values() as IterableIterator<NodesDef[keyof NodesDef]>;
   }
 
   public emptyNode<NodeType extends keyof NodesDef>(nodeType: NodeType) {
@@ -230,6 +244,9 @@ export class NormalizedDocumentImpl<
       }
       // @ts-expect-error too many generics
       emptyChildren[linkName] = emptyLink;
+    }
+    if (nodeType === (this.schema.rootType as keyof NodesDef)) {
+      emptyChildren.__orphans = [];
     }
     const emptyLinks: Partial<NodeLinksOfTreeNode<NodesDef, NodeType>> = {};
     if (nodeTypeDef.links) {
@@ -378,30 +395,40 @@ export function pathForElementWithId<
   const path: Path<NodesDef> = [];
   if (element.parent) {
     let pathElement: PathElement<NodesDef> | null = null;
-    const parentEl = mappedElement(doc, element.parent.__typename, element.parent._id);
+    const parentEl = mappedElement(
+      doc,
+      element.parent.__typename,
+      element.parent._id
+    );
     const parentLinkField = parentEl.children[element.parent.parentField];
     if (parentLinkField) {
       if (Array.isArray(parentLinkField)) {
-        const index = (parentLinkField as LinksArray<keyof NodesDef>).findIndex(arrayElId => elementIdsEquals(arrayElId, element));
+        const index = (parentLinkField as LinksArray<keyof NodesDef>).findIndex(
+          arrayElId => elementIdsEquals(arrayElId, element)
+        );
         if (index === -1) {
-          throw new RangeError('The child element cannot find itself in the parent array');
+          throw new RangeError(
+            'The child element cannot find itself in the parent array'
+          );
         }
         pathElement = {
           field: element.parent.parentField as AllChildrenFields<NodesDef>,
           index
-        }
+        };
       } else if (parentLinkField instanceof Map) {
         pathElement = {
           field: element.parent.parentField as AllChildrenFields<NodesDef>,
           nodeType: element.parent.__typename,
           nodeId: element.parent._id
-        }
+        };
       } else {
         pathElement = element.parent.parentField as AllChildrenFields<NodesDef>;
       }
       path.push(pathElement!);
     } else {
-      throw new TypeError('Cannot find the field that should connect the parent to the node');
+      throw new TypeError(
+        'Cannot find the field that should connect the parent to the node'
+      );
     }
 
     const parentPath = pathForElementWithId(

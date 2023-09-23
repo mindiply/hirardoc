@@ -31,7 +31,8 @@ describe('Empty doc and nodes', () => {
       children: {
         children: [],
         owner: null,
-        members: new Map()
+        members: new Map(),
+        __orphans: []
       }
     });
   });
