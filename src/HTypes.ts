@@ -214,6 +214,10 @@ export interface NormalizedDocument<
     nodeType: Type,
     nodeId?: Id
   ) => NodesDef[Type];
+
+  reIdSubtree(
+    subtreeRootId: ElementId<keyof NodesDef>
+  ): NormalizedDocument<NodesDef, R>;
 }
 
 export interface SetPathElement<
@@ -754,7 +758,7 @@ export interface II3WMergeContext<NorDoc extends NormalizedDocument<any, any>> {
   elementsToDelete: Array<{__typename: keyof NodesDefOfDoc<NorDoc>; _id: Id}>;
   mergedDoc: MutableDocument<NodesDefOfDoc<NorDoc>, RootTypeOfDoc<NorDoc>>;
   conflicts: ConflictsMap<NodesDefOfDoc<NorDoc>>;
-  overrides?: MergeOverridesMap<NodesDefOfDoc<NorDoc>>;
+  overrides?: MergeOverridesMap<NorDoc>;
   defaultHooks: MergeHooks<NorDoc>;
 }
 
@@ -792,7 +796,8 @@ export interface IOnIncompatibleArrayElementsResult {
  */
 export interface IMergeElementOverrides<
   NorDoc extends NormalizedDocument<any, any>,
-  ElementTypename extends keyof NodesDefOfDoc<NorDoc>
+  ElementTypename extends
+    keyof NodesDefOfDoc<NorDoc> = keyof NodesDefOfDoc<NorDoc>
 > {
   /**
    * Comparison used to determine the processing order of an array linked field. The elements

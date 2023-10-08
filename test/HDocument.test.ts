@@ -2,7 +2,8 @@ import {
   creationDate,
   emptyTestDocument,
   ITestDocElementsMap,
-  testDocSchema
+  testDocSchema,
+  TestNormalizeDocument
 } from './testTypes';
 import {
   compactTreeNode,
@@ -13,8 +14,10 @@ import {
   HDocCommandType,
   InsertElement,
   mappedElement,
-  mutableDocument
+  mutableDocument,
+  visitDocument
 } from '../src';
+import {iidToStr} from '../src/HUtils';
 
 describe('Empty doc and nodes', () => {
   const emptyDoc = createNormalizedDocument(testDocSchema);
@@ -920,5 +923,75 @@ describe('Test the basic operations', () => {
     expect(hasMappedElement(modifiedDoc, 'Nod', 'Node1')).toBe(false);
     // @ts-expect-error test incorrect id
     expect(hasMappedElement(modifiedDoc, 'Nodes', 'Node1')).toBe(false);
+  });
+});
+
+describe('ReidSubTree', () => {
+  const mutableDoc = mutableDocument(emptyTestDocument());
+  mutableDoc.insertElement({
+    position: {field: 'children', index: 0},
+    parent: [],
+    element: {
+      __typename: 'Node',
+      _id: 'Node1',
+      isChecked: false,
+      text: 'firstNode',
+      membersIds: []
+    }
+  });
+  mutableDoc.insertElement({
+    position: {field: 'children', index: 0},
+    parent: [{field: 'children', index: 0}],
+    element: {
+      __typename: 'Node',
+      _id: 'Node2',
+      isChecked: true,
+      text: 'secondNode',
+      membersIds: []
+    }
+  });
+  mutableDoc.insertElement({
+    position: 'owner',
+    parent: [],
+    element: {
+      __typename: 'Member',
+      _id: 'Member1',
+      lastName: 'Testy',
+      firstName: 'Test'
+    }
+  });
+  mutableDoc.insertElement({
+    position: {field: 'members', nodeType: 'Member', nodeId: 'Member2'},
+    parent: [],
+    element: {
+      __typename: 'Member',
+      _id: 'Member2',
+      lastName: 'Testy',
+      firstName: 'Test'
+    }
+  });
+  const testDoc = mutableDoc.updatedDocument();
+
+  function strIdsInDoc(doc: TestNormalizeDocument): Set<string> {
+    const docsStrIds = new Set<string>();
+
+    visitDocument(doc, (_, nodeType, nodeId) =>
+      docsStrIds.add(iidToStr({__typename: nodeType, _id: nodeId}))
+    );
+    return docsStrIds;
+  }
+
+  test('Check we get new Ids and that the trees look equivalent logically', () => {
+    const reidedDoc = testDoc.reIdSubtree(testDoc.rootId);
+    const oldIdsSet = strIdsInDoc(testDoc);
+    const newIdsSet = strIdsInDoc(reidedDoc);
+    expect(newIdsSet.size).toBe(oldIdsSet.size);
+    let nDifferentIds = 0;
+    for (const oldEl of testDoc) {
+      if (newIdsSet.has(iidToStr(oldEl))) {
+        nDifferentIds++;
+      }
+    }
+    expect(nDifferentIds).toBe(newIdsSet.size);
   });
 });

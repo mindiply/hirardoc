@@ -187,9 +187,12 @@ class MutableDocumentImpl<
     }
     const elementsToDelete: ElementId<keyof NodesDef>[] = [];
     visitDocument(
-      this,
+      this as NormalizedDocument<NodesDef, R>,
       (_, nodeType, nodeId) => {
-        elementsToDelete.push({__typename: nodeType, _id: nodeId});
+        elementsToDelete.push({
+          __typename: nodeType as keyof NodesDef,
+          _id: nodeId
+        });
       },
       {
         traversal: DocumentVisitTraversal.DEPTH_FIRST,
@@ -360,6 +363,12 @@ class MutableDocumentImpl<
         throw new TypeError('Unknown change type');
       }
     }
+  }
+
+  public reIdSubtree(
+    subtreeRootId: ElementId<keyof NodesDef>
+  ): NormalizedDocument<NodesDef, R> {
+    return this.updatedDocument().reIdSubtree(subtreeRootId);
   }
 }
 

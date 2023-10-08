@@ -4,67 +4,77 @@ import {
   testDocSchema,
   TestNormalizeDocument
 } from './testTypes';
-import {DocumentVisitTraversal, NodeVisitor, visitDocument} from '../src';
+import {
+  createNormalizedDocument,
+  DocumentVisitTraversal,
+  NodeVisitor,
+  visitDocument,
+  mutableDocument
+} from '../src';
 
-const testDoc: TestNormalizeDocument = {
-  schema: testDocSchema,
-  maps: {
-    Node: new Map([
-      [
-        'node_1',
-        {
-          ...emptyNodeInfo(),
-          _id: 'node_1',
-          parentType: 'Root',
-          parentId: 'root_1',
-          text: 'Parent node',
-          isChecked: false,
-          children: ['node_2', 'node_3']
-        }
-      ],
-      [
-        'node_2',
-        {
-          ...emptyNodeInfo(),
-          _id: 'node_2',
-          children: [],
-          isChecked: true,
-          text: 'Child Node 1',
-          parentType: 'Node',
-          parentId: 'node_1'
-        }
-      ],
-      [
-        'node_3',
-        {
-          ...emptyNodeInfo(),
-          _id: 'node_3',
-          children: [],
-          isChecked: false,
-          text: 'Child Node 2',
-          parentType: 'Node',
-          parentId: 'node_1'
-        }
-      ]
-    ]),
-    Root: new Map([
-      [
-        'root_1',
-        {
-          __typename: 'Root',
-          _id: 'root_1',
-          parentType: null,
-          parentId: null,
-          createdAt: new Date(),
-          children: ['node_1'],
-          name: 'A tree'
-        }
-      ]
-    ])
+let testDoc = createNormalizedDocument(testDocSchema, {
+  __typename: 'Root',
+  _id: 'root_1',
+  createdAt: new Date(2024, 0, 1),
+  name: 'TestDoc'
+});
+const mutableDoc = mutableDocument(testDoc);
+mutableDoc.insertElement({
+  element: {
+    __typename: 'Node',
+    _id: 'node_1',
+    text: 'Parent node',
+    isChecked: false
   },
-  rootType: 'Root',
-  rootId: 'root_1'
-};
+  parent: [],
+  position: {field: 'children', index: 0}
+});
+
+mutableDoc.insertElement({
+  element: {
+    __typename: 'Node',
+    _id: 'node_2',
+    isChecked: true,
+    text: 'Child Node 1'
+  },
+  parent: [{field: 'children', index: 0}],
+  position: {field: 'children', index: 0}
+});
+
+mutableDoc.insertElement({
+  element: {
+    __typename: 'Node',
+    _id: 'node_3',
+    isChecked: true,
+    text: 'Child Node 2'
+  },
+  parent: [{field: 'children', index: 0}],
+  position: {field: 'children', index: 1}
+});
+
+mutableDoc.insertElement({
+  element: {
+    __typename: 'Member',
+    _id: 'member1',
+    lastName: 'Test',
+    firstName: 'Test1'
+  },
+  position: 'owner',
+  parent: []
+});
+
+mutableDoc.insertElement({
+  element: {
+    __typename: 'Member',
+    _id: 'member2',
+    lastName: 'Test',
+    firstName: 'Test2'
+  },
+  position: {field: 'members', nodeType: 'Member', nodeId: 'Member2'},
+  parent: []
+});
+
+testDoc = mutableDoc.updatedDocument();
 
 const testVisit: NodeVisitor<
   ITestDocElementsMap,
@@ -81,10 +91,12 @@ describe('HVisit tests', () => {
   test('Normal visit', () => {
     const context = {count: 0, nodeIds: []};
     visitDocument(testDoc, testVisit, {context});
-    expect(context.count).toEqual(4);
+    expect(context.count).toEqual(6);
     expect(context.nodeIds).toEqual([
       'Root:root_1',
       'Node:node_1',
+      'Member:member1',
+      'Member:member2',
       'Node:node_2',
       'Node:node_3'
     ]);
@@ -96,13 +108,15 @@ describe('HVisit tests', () => {
       context,
       traversal: DocumentVisitTraversal.DEPTH_FIRST
     });
-    expect(context.count).toEqual(4);
     expect(context.nodeIds).toEqual([
       'Node:node_3',
       'Node:node_2',
+      'Member:member2',
+      'Member:member1',
       'Node:node_1',
       'Root:root_1'
     ]);
+    expect(context.count).toEqual(6);
   });
 
   test('Skip node types visit', () => {
@@ -182,12 +196,14 @@ describe('HVisit tests', () => {
     const context = {count: 0, nodeIds: []};
     visitDocument(testDoc, testVisit, {
       context,
-      typesToTraverse: ['Node']
+      typesToTraverse: ['Node', 'Root']
     });
-    expect(context.count).toEqual(4);
+    expect(context.count).toEqual(6);
     expect(context.nodeIds).toEqual([
       'Root:root_1',
       'Node:node_1',
+      'Member:member1',
+      'Member:member2',
       'Node:node_2',
       'Node:node_3'
     ]);
@@ -218,15 +234,15 @@ describe('HVisit tests', () => {
     const context = {count: 0, nodeIds: []};
     visitDocument(testDoc, testVisit, {
       context,
-      typesToTraverse: ['Node'],
+      typesToTraverse: ['Node', 'Root'],
+      typesToVisit: ['Node'],
       traversal: DocumentVisitTraversal.DEPTH_FIRST
     });
-    expect(context.count).toEqual(4);
+    expect(context.count).toEqual(3);
     expect(context.nodeIds).toEqual([
       'Node:node_3',
       'Node:node_2',
-      'Node:node_1',
-      'Root:root_1'
+      'Node:node_1'
     ]);
     context.count = 0;
     context.nodeIds = [];
@@ -258,7 +274,7 @@ describe('HVisit tests', () => {
     visitDocument(testDoc, testVisit, {
       context,
       startElement: {
-        type: 'Node',
+        __typename: 'Node',
         _id: 'node_1'
       }
     });
@@ -273,7 +289,7 @@ describe('HVisit tests', () => {
     visitDocument(testDoc, testVisit, {
       context,
       startElement: {
-        type: 'Node',
+        __typename: 'Node',
         _id: 'node_2'
       }
     });
@@ -284,14 +300,16 @@ describe('HVisit tests', () => {
     visitDocument(testDoc, testVisit, {
       context,
       startElement: {
-        type: 'Root',
+        __typename: 'Root',
         _id: 'root_1'
       }
     });
-    expect(context.count).toEqual(4);
+    expect(context.count).toEqual(6);
     expect(context.nodeIds).toEqual([
       'Root:root_1',
       'Node:node_1',
+      'Member:member1',
+      'Member:member2',
       'Node:node_2',
       'Node:node_3'
     ]);
@@ -303,7 +321,7 @@ describe('HVisit tests', () => {
       context,
       traversal: DocumentVisitTraversal.DEPTH_FIRST,
       startElement: {
-        type: 'Node',
+        __typename: 'Node',
         _id: 'node_1'
       }
     });
@@ -319,7 +337,7 @@ describe('HVisit tests', () => {
       context,
       traversal: DocumentVisitTraversal.DEPTH_FIRST,
       startElement: {
-        type: 'Node',
+        __typename: 'Node',
         _id: 'node_2'
       }
     });
@@ -331,14 +349,16 @@ describe('HVisit tests', () => {
       context,
       traversal: DocumentVisitTraversal.DEPTH_FIRST,
       startElement: {
-        type: 'Root',
+        __typename: 'Root',
         _id: 'root_1'
       }
     });
-    expect(context.count).toEqual(4);
+    expect(context.count).toEqual(6);
     expect(context.nodeIds).toEqual([
       'Node:node_3',
       'Node:node_2',
+      'Member:member2',
+      'Member:member1',
       'Node:node_1',
       'Root:root_1'
     ]);

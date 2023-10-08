@@ -12,6 +12,7 @@ import {
   NodeLink,
   NodeLinksOfTreeNode,
   NormalizedDocument,
+  ParentToChildLinkField,
   Path,
   PathElement,
   RootTreeNode,
@@ -28,6 +29,8 @@ import {
   isSetPathElement,
   mappedElement
 } from './HUtils';
+import {breadthFirstNodes, depthFirstNodes} from './HVisit';
+import {isEqual} from 'lodash';
 
 /**
  * Creates an empty copy version of the normalized document
@@ -301,6 +304,104 @@ export class NormalizedDocumentImpl<
 
   public idAndTypeForPath(path: Path<NodesDef>): ElementId<keyof NodesDef> {
     return idAndTypeForPath(this, path);
+  }
+
+  public reIdSubtree(
+    subtreeRootId: ElementId<keyof NodesDef>
+  ): NormalizedDocument<NodesDef, R> {
+    function substituteChildId<C extends keyof NodesDef>(
+      parentNode: NodesDef[keyof NodesDef],
+      parentField: ParentToChildLinkField<
+        keyof NodesDef,
+        keyof NodeChildrenOfTreeNode<NodesDef, keyof NodesDef>
+      >,
+      oldElement: NodesDef[C],
+      newElement: NodesDef[C]
+    ): NodesDef[keyof NodesDef] {
+      const parentToChildField = parentNode.children[
+        oldElement.parent!.parentField
+      ] as NodeLink<C>;
+      const newElId: ElementId<C> = {
+        // @ts-expect-error unable to cast to C
+        __typename: newElement.__typename,
+        _id: newElement._id
+      };
+      let updatedParentToChildField: NodeLink<C>;
+      if (Array.isArray(parentToChildField)) {
+        updatedParentToChildField = parentToChildField.slice();
+        const index = updatedParentToChildField.findIndex(
+          childElId =>
+            childElId.__typename === oldElement.__typename &&
+            childElId._id === oldElement._id
+        );
+        if (index === -1) {
+          throw new TypeError(
+            'Integrity constraing error, child not found in parent'
+          );
+        }
+        updatedParentToChildField[index] = newElId;
+      } else if (parentToChildField instanceof Map) {
+        updatedParentToChildField = new Map(parentToChildField);
+        updatedParentToChildField.delete(iidToStr(oldElement));
+        // @ts-expect-error Unable to cast to ElementId<C>
+        updatedParentToChildField.set(iidToStr(newElement), newElement);
+      } else if (
+        parentToChildField === null ||
+        isElementId(parentToChildField)
+      ) {
+        updatedParentToChildField = newElId;
+      } else {
+        throw new TypeError('Incorrect link field');
+      }
+      return Object.assign({}, parentNode, {
+        children: Object.assign({}, parentNode.children, {
+          [parentField.parentField]: updatedParentToChildField
+        })
+      });
+    }
+
+    const newTree = new NormalizedDocumentImpl(this);
+    const nodesToReid = depthFirstNodes(
+      newTree,
+      subtreeRootId.__typename,
+      subtreeRootId._id
+    );
+    for (const nodeToReidId of nodesToReid.map(nodeId => ({
+      __typename: nodeId[0],
+      _id: nodeId[1]
+    }))) {
+      const nodeToReid = newTree.getNode(nodeToReidId);
+      if (!nodeToReid) {
+        throw new TypeError('Element with requested elementId not found');
+      }
+      newTree.nodes.delete(iidToStr(nodeToReidId));
+      const reidedNode = Object.assign({}, nodeToReid, {_id: generateNewId()});
+      newTree.nodes.set(iidToStr(reidedNode), reidedNode);
+      if (reidedNode.parent) {
+        const parentNode = newTree.getNode(reidedNode.parent);
+        if (!parentNode) {
+          throw new TypeError('Reference to parent node is incorrect');
+        }
+        const updatedParent = substituteChildId(
+          parentNode,
+          reidedNode.parent,
+          nodeToReid,
+          reidedNode
+        );
+        newTree.nodes.set(iidToStr(updatedParent), updatedParent);
+      } else {
+        if (!elementIdsEquals(newTree.rootId, nodeToReidId)) {
+          throw new TypeError(
+            'Node with null parent is not the root of the tree'
+          );
+        }
+        newTree.rootId = {
+          __typename: reidedNode.__typename as R,
+          _id: reidedNode._id
+        };
+      }
+    }
+    return newTree;
   }
 }
 

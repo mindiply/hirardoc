@@ -7,7 +7,9 @@ import {
   TreeNode,
   LinkType,
   NodeLink,
-  ElementId
+  ElementId,
+  NodesDefOfDoc,
+  RootTypeOfDoc
 } from './HTypes';
 import {isElementId, mappedElement} from './HUtils';
 
@@ -24,22 +26,22 @@ import {isElementId, mappedElement} from './HUtils';
  * @param {Context} context
  */
 export function visitDocument<
-  NodesDef extends Record<
-    keyof NodesDef,
-    TreeNode<NodesDef, keyof NodesDef, any, any, any>
-  >,
-  R extends keyof NodesDef = keyof NodesDef,
+  NorDoc extends NormalizedDocument<any, any>,
   Context = any
 >(
-  doc: NormalizedDocument<NodesDef, R>,
-  onNodeVisit: NodeVisitor<NodesDef, R>,
+  doc: NormalizedDocument<NodesDefOfDoc<NorDoc>, RootTypeOfDoc<NorDoc>>,
+  onNodeVisit: NodeVisitor<NodesDefOfDoc<NorDoc>, RootTypeOfDoc<NorDoc>>,
   {
     context,
     traversal = DocumentVisitTraversal.BREADTH_FIRST,
     startElement,
     typesToTraverse,
     typesToVisit
-  }: VisitDocumentOptions<NodesDef, keyof NodesDef, Context> = {}
+  }: VisitDocumentOptions<
+    NodesDefOfDoc<NorDoc>,
+    keyof NodesDefOfDoc<NorDoc>,
+    Context
+  > = {}
 ) {
   const elementType = startElement
     ? startElement.__typename
@@ -48,7 +50,7 @@ export function visitDocument<
   const traversableMap = typesToTraverse ? new Set(typesToTraverse) : undefined;
   const visitableMap = typesToVisit ? new Set(typesToVisit) : undefined;
   for (
-    const nodesToVisit: Array<[keyof NodesDef, Id]> =
+    const nodesToVisit: Array<[keyof NodesDefOfDoc<NorDoc>, Id]> =
       traversal === DocumentVisitTraversal.BREADTH_FIRST
         ? breadthFirstNodes(
             doc,
@@ -82,20 +84,52 @@ export function breadthFirstNodes<
   doc: NormalizedDocument<NodesDef, U>,
   nodeType: U,
   nodeId: Id,
-  typesToTraverse?: Set<U>,
-  typesToVisit?: Set<U>,
-  nodesVisited: Set<string> = new Set()
+  typesToTraverse: Set<U> = new Set(),
+  typesToVisit: Set<U> = new Set()
 ): Array<[U, Id]> {
+  const nodesVisited = new Set<string>();
+  const bfNodes: Array<[U, Id]> =
+    typesToVisit.size > 0 && !typesToVisit.has(nodeType)
+      ? []
+      : [[nodeType, nodeId]];
+  if (typesToTraverse.size > 0 && !typesToTraverse.has(nodeType)) {
+    return bfNodes;
+  }
+  populateBreadthFirstDescendants(
+    doc,
+    nodeType,
+    nodeId,
+    bfNodes,
+    typesToTraverse,
+    typesToVisit,
+    nodesVisited
+  );
+  return bfNodes;
+}
+
+function populateBreadthFirstDescendants<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  U extends keyof NodesDef
+>(
+  doc: NormalizedDocument<NodesDef, U>,
+  nodeType: U,
+  nodeId: Id,
+  bfElements: Array<[U, Id]>,
+  typesToTraverse: Set<U> = new Set(),
+  typesToVisit: Set<U> = new Set(),
+  nodesVisited: Set<string> = new Set()
+) {
   const nodeUid = `${String(nodeType)}:${nodeId}`;
   if (nodesVisited.has(nodeUid)) {
-    return [];
-  } else {
-    nodesVisited.add(nodeUid);
+    return;
   }
+  nodesVisited.add(nodeUid);
+  const bfDescendats: Array<[U, Id]> = [];
+  const allChildren: Array<[U, Id]> = [];
   const element = mappedElement(doc, nodeType, nodeId);
-  const nodeList: Array<[U, Id]> =
-    typesToVisit && !typesToVisit.has(nodeType) ? [] : [[nodeType, nodeId]];
-  const childrenToVisit: Array<[U, Id]> = [];
   const nodeSchema = doc.schema.nodeTypes[nodeType];
   for (const linkField in nodeSchema.children) {
     const linkFieldProps = nodeSchema.children[linkField];
@@ -105,7 +139,7 @@ export function breadthFirstNodes<
       if (!(nodeLink && nodeLink instanceof Map)) {
         throw new TypeError('Expected a link set');
       }
-      childrenToVisit.push(
+      allChildren.push(
         ...(Array.from(nodeLink.values()).map(elId => [
           elId.__typename,
           elId._id
@@ -115,7 +149,7 @@ export function breadthFirstNodes<
       if (!Array.isArray(nodeLink)) {
         throw new TypeError('Expected a links array');
       }
-      childrenToVisit.push(
+      allChildren.push(
         ...(nodeLink.map(elId => [elId.__typename, elId._id]) as Array<[U, Id]>)
       );
     } else if (linkFieldProps === LinkType.single) {
@@ -123,23 +157,30 @@ export function breadthFirstNodes<
         if (!isElementId(nodeLink)) {
           throw new TypeError('Expected null or ElementId');
         }
-        childrenToVisit.push([nodeLink.__typename, nodeLink._id] as [U, Id]);
+        allChildren.push([nodeLink.__typename, nodeLink._id] as [U, Id]);
       }
     }
   }
-  for (const [childType, childId] of childrenToVisit) {
-    nodeList.push(
-      ...breadthFirstNodes(
-        doc,
-        childType,
-        childId,
-        typesToTraverse,
-        typesToVisit,
-        nodesVisited
-      )
+  for (const [childType, childId] of allChildren) {
+    if (typesToVisit.size > 0 && !typesToVisit.has(childType)) {
+      continue;
+    }
+    bfElements.push([childType, childId]);
+  }
+  for (const [childType, childId] of allChildren) {
+    if (typesToTraverse.size > 0 && !typesToTraverse.has(childType)) {
+      continue;
+    }
+    populateBreadthFirstDescendants(
+      doc,
+      childType,
+      childId,
+      bfElements,
+      typesToTraverse,
+      typesToVisit,
+      nodesVisited
     );
   }
-  return nodeList;
 }
 
 export function depthFirstNodes<
@@ -152,20 +193,51 @@ export function depthFirstNodes<
   doc: NormalizedDocument<NodesDef, R>,
   nodeType: keyof NodesDef,
   nodeId: Id,
-  typesToTraverse?: Set<keyof NodesDef>,
-  typesToVisit?: Set<keyof NodesDef>,
-  nodesVisited: Set<string> = new Set()
+  typesToTraverse: Set<keyof NodesDef> = new Set(),
+  typesToVisit: Set<keyof NodesDef> = new Set()
 ): Array<[keyof NodesDef, Id]> {
+  const nodesVisited = new Set<string>();
+  const dfNodes: Array<[keyof NodesDef, Id]> = [];
+
+  if (!(typesToTraverse.size > 0 && !typesToTraverse.has(nodeType))) {
+    populateDepthFirstDescendants(
+      doc,
+      nodeType,
+      nodeId,
+      dfNodes,
+      typesToTraverse,
+      typesToVisit,
+      nodesVisited
+    );
+  }
+  if (!(typesToVisit.size > 0 && !typesToVisit.has(nodeType))) {
+    dfNodes.push([nodeType, nodeId]);
+  }
+  return dfNodes;
+}
+
+function populateDepthFirstDescendants<
+  NodesDef extends Record<
+    keyof NodesDef,
+    TreeNode<NodesDef, keyof NodesDef, any, any, any>
+  >,
+  U extends keyof NodesDef
+>(
+  doc: NormalizedDocument<NodesDef, U>,
+  nodeType: U,
+  nodeId: Id,
+  bfElements: Array<[U, Id]>,
+  typesToTraverse: Set<U> = new Set(),
+  typesToVisit: Set<U> = new Set(),
+  nodesVisited: Set<string> = new Set()
+) {
   const nodeUid = `${String(nodeType)}:${nodeId}`;
   if (nodesVisited.has(nodeUid)) {
-    return [];
-  } else {
-    nodesVisited.add(nodeUid);
+    return;
   }
-  const nodeList: Array<[keyof NodesDef, Id]> =
-    typesToVisit && !typesToVisit.has(nodeType) ? [] : [[nodeType, nodeId]];
+  nodesVisited.add(nodeUid);
+  const allChildren: Array<[U, Id]> = [];
   const element = mappedElement(doc, nodeType, nodeId);
-  const childrenElIds: ElementId<keyof NodesDef>[] = [];
   const nodeSchema = doc.schema.nodeTypes[nodeType];
   for (const linkField in nodeSchema.children) {
     const linkFieldProps = nodeSchema.children[linkField];
@@ -175,35 +247,46 @@ export function depthFirstNodes<
       if (!(nodeLink && nodeLink instanceof Map)) {
         throw new TypeError('Expected a link set');
       }
-      childrenElIds.push(...Array.from(nodeLink.values()));
+      allChildren.push(
+        ...(Array.from(nodeLink.values()).map(elId => [
+          elId.__typename,
+          elId._id
+        ]) as Array<[U, Id]>)
+      );
     } else if (linkFieldProps === LinkType.array) {
       if (!Array.isArray(nodeLink)) {
         throw new TypeError('Expected a links array');
       }
-      childrenElIds.push(...nodeLink);
+      allChildren.push(
+        ...(nodeLink.map(elId => [elId.__typename, elId._id]) as Array<[U, Id]>)
+      );
     } else if (linkFieldProps === LinkType.single) {
       if (nodeLink) {
         if (!isElementId(nodeLink)) {
           throw new TypeError('Expected null or ElementId');
         }
-        childrenElIds.push(nodeLink);
+        allChildren.push([nodeLink.__typename, nodeLink._id] as [U, Id]);
       }
     }
   }
-  for (const childElId of childrenElIds) {
-    if (typesToTraverse && !typesToTraverse.has(childElId.__typename)) {
+  for (const [childType, childId] of allChildren.reverse()) {
+    if (typesToTraverse.size > 0 && !typesToTraverse.has(childType)) {
       continue;
     }
-    nodeList.unshift(
-      ...depthFirstNodes(
-        doc,
-        childElId.__typename,
-        childElId._id,
-        typesToTraverse,
-        typesToVisit,
-        nodesVisited
-      )
+    populateDepthFirstDescendants(
+      doc,
+      childType,
+      childId,
+      bfElements,
+      typesToTraverse,
+      typesToVisit,
+      nodesVisited
     );
   }
-  return nodeList;
+  for (const [childType, childId] of allChildren) {
+    if (typesToVisit.size > 0 && !typesToVisit.has(childType)) {
+      continue;
+    }
+    bfElements.push([childType, childId]);
+  }
 }
