@@ -3,6 +3,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## [0.0.18] - 2024-03-01
+
+### New
+- Added asyncVisitDocument, to perform asynchronous visits of a document.
+
+## [0.0.17] - 2023-03-12
+
+### HotFixes
+- Hot-fixed error in 0.0.16 three-way merge fix.
 
 ## [0.0.16] - 2023-03-17
 
